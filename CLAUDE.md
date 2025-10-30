@@ -10,7 +10,7 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) and de
 - **Framework**: FastAPI (Python 3.10)
 - **OCR Engine**: PaddleOCR-VL 0.9B (NaViT + ERNIE-4.5)
 - **GPU**: NVIDIA L4 (CUDA 12.4)
-- **Deployment**: Docker + docker-compose
+- **Deployment**: Docker + docker-compose (image size: ~3.5-4GB with pre-packaged models)
 - **Target**: AWS EC2 g6.xlarge (us-west-2)
 
 ## Project Structure
@@ -310,7 +310,7 @@ cd paddleocr-vl-service
 # Create .env file (optional, uses defaults)
 cp .env.template .env
 
-# Build and run
+# Build and run (build includes model download, may take 5-10 minutes)
 docker-compose up -d
 
 # Check logs
@@ -362,44 +362,46 @@ docker exec paddleocr-vl-service nvidia-smi
 
 **Cold Start (first request):**
 - Container startup: ~5s
-- Model download: ~10-15s (if not cached)
-- Model initialization: ~5-10s
-- **Total:** ~20-30s
+- Model initialization: ~5-10s (models pre-packaged in image)
+- **Total:** ~5-10s
+
+**Note:** Models are now **pre-downloaded during Docker build** and embedded in the image (~2GB). This eliminates the 10-15 second download delay that previously occurred on first API request.
 
 **Warm Start (subsequent requests):**
 - Processing only: ~3-10s (depends on document complexity)
 
-**Pre-warm Models:**
-```bash
-# Download models before first API request
-docker exec -it paddleocr-vl-service python -c \
-  "from paddleocr import PaddleOCRVL; PaddleOCRVL()"
-```
-
-**Volume Caching:**
-Models are cached in `/home/appuser/.paddleocr` (persisted volume). Survives container restarts.
-
 ## Troubleshooting
 
-### Issue: Model Download Fails
+### Issue: Docker Build Fails (Model Download)
 
 **Symptoms:**
-- First request times out
-- Logs show "Failed to download model"
+- Docker build fails during model download step
+- Error: "Model directory not created" or "Model directory is empty"
 
 **Solutions:**
-1. Check internet connectivity from container:
+1. Check internet connectivity during build:
    ```bash
-   docker exec paddleocr-vl-service curl -I https://paddlepaddle.org.cn
+   # Test connection to PaddlePaddle servers
+   curl -I https://paddlepaddle.org.cn
+   curl -I https://paddle-whl.bj.bcebos.com
    ```
 
-2. Manually download models (one-time):
+2. Increase Docker build timeout (if needed):
    ```bash
-   docker exec paddleocr-vl-service python -c \
-     "from paddleocr import PaddleOCRVL; PaddleOCRVL()"
+   # Build with extended timeout
+   DOCKER_BUILDKIT=1 docker-compose build --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
    ```
 
-3. Check proxy settings (if behind corporate firewall)
+3. Check proxy settings (if behind corporate firewall):
+   ```bash
+   # Add to Dockerfile before model download
+   ENV HTTP_PROXY=http://your-proxy:port
+   ENV HTTPS_PROXY=http://your-proxy:port
+   ```
+
+4. Verify sufficient disk space for build (~5GB needed)
+
+**Note:** Model download now happens during Docker build, not at runtime. If build succeeds, models are guaranteed to be present.
 
 ### Issue: GPU Not Detected
 

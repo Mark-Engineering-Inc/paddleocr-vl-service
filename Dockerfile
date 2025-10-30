@@ -99,6 +99,19 @@ RUN mkdir -p /home/appuser/.paddleocr /tmp/paddleocr && \
 # Switch to non-root user
 USER appuser
 
+# Pre-download PaddleOCR-VL models during build (MUST succeed or build fails)
+# This eliminates the 10-15 second model download delay on first API request
+RUN python -c "\
+from paddleocr import PaddleOCRVL; \
+import os; \
+print('Downloading PaddleOCR-VL models...'); \
+model = PaddleOCRVL(); \
+model_dir = os.path.expanduser('~/.paddleocr'); \
+assert os.path.exists(model_dir), 'Model directory not created'; \
+assert os.listdir(model_dir), 'Model directory is empty'; \
+print('✓ Models downloaded and verified successfully'); \
+"
+
 # Environment variables
 ENV HOME=/home/appuser
 ENV PATH="/home/appuser/.local/bin:${PATH}"

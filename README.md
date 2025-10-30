@@ -26,7 +26,7 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 git clone <repository-url>
 cd paddleocr-vl-service
 
-# Build and run
+# Build and run (first build takes 5-10 minutes to download models)
 docker-compose up -d
 
 # Check status
@@ -34,6 +34,8 @@ curl http://localhost:8000/health
 ```
 
 The service will be available at `http://localhost:8000`
+
+**Note:** Models (~2GB) are pre-downloaded during Docker build, resulting in a ~3.5-4GB image size but faster startup times.
 
 ## API Documentation
 
@@ -156,7 +158,7 @@ Access Swagger UI at: `http://localhost:8000/api/v1/docs`
 **Key Components:**
 - **FastAPI**: Web framework with async support
 - **PaddleOCR-VL**: Vision-language OCR model (0.9B parameters)
-- **Lazy Loading**: Models load on first request to speed up startup
+- **Pre-packaged Models**: Models embedded in Docker image for instant availability
 - **Thread-Safe**: Singleton pattern for pipeline management
 
 ## Configuration
@@ -187,7 +189,7 @@ LOG_FORMAT=json
 **Typical Processing Times:**
 - Simple document (1 page, text only): 3-5 seconds
 - Complex document (tables, charts): 5-10 seconds
-- First request (model loading): +10-15 seconds
+- First request (model initialization): 5-10 seconds (models pre-packaged in image)
 
 **GPU Memory Usage:**
 - Model size: ~2GB VRAM
@@ -219,13 +221,18 @@ nvidia-smi -l 1
 
 ## Troubleshooting
 
-### Model Download Issues
+### Docker Build Fails
 
-**Problem:** First request times out or fails
+**Problem:** Build fails during model download step
 
-**Solution:** Models (~2GB) download on first request. Increase timeout or pre-download:
+**Solution:** Ensure network connectivity to PaddlePaddle servers during build:
 ```bash
-docker exec -it paddleocr-vl-service python -c "from paddleocr import PaddleOCRVL; PaddleOCRVL()"
+# Test connection
+curl -I https://paddlepaddle.org.cn
+curl -I https://paddle-whl.bj.bcebos.com
+
+# Retry build
+docker-compose build --no-cache
 ```
 
 ### GPU Not Detected
