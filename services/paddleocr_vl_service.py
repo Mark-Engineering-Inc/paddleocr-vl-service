@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 import tempfile
 import time
+import json
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -40,6 +41,52 @@ class PaddleOCRVLService:
                     logger.info("PaddleOCRVLService instance created (pipeline will be initialized on first use)")
                     self._initialized = True
 
+    def _make_serializable(self, obj: Any) -> Any:
+        """
+        Convert any object to JSON-serializable format.
+        Handles nested structures, filters out methods, and converts complex types.
+
+        Args:
+            obj: Any Python object
+
+        Returns:
+            JSON-serializable version of the object
+        """
+        # Handle None, primitives (str, int, float, bool)
+        if obj is None or isinstance(obj, (str, int, float, bool)):
+            return obj
+
+        # Handle lists
+        if isinstance(obj, (list, tuple)):
+            return [self._make_serializable(item) for item in obj]
+
+        # Handle dicts
+        if isinstance(obj, dict):
+            return {k: self._make_serializable(v) for k, v in obj.items() if not callable(v)}
+
+        # Skip callables (methods, functions)
+        if callable(obj):
+            return None
+
+        # Try to convert to dict if it has __dict__
+        if hasattr(obj, '__dict__'):
+            try:
+                return {
+                    k: self._make_serializable(v)
+                    for k, v in obj.__dict__.items()
+                    if not k.startswith('_') and not callable(v)
+                }
+            except Exception:
+                pass
+
+        # Fall back to string representation for unknown types
+        try:
+            # Test if it's JSON serializable
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return str(obj)
+
     def _initialize_pipeline(self) -> None:
         """
         Initialize the PaddleOCR-VL pipeline.
@@ -58,16 +105,12 @@ class PaddleOCRVLService:
             try:
                 from paddleocr import PaddleOCRVL
 
-                # Initialize pipeline with GPU support
-                self._pipeline = PaddleOCRVL(
-                    use_gpu=settings.use_gpu,
-                    enable_mkldnn=settings.enable_mkldnn if not settings.use_gpu else False,
-                    show_log=False  # Suppress PaddleOCR logs
-                )
+                # Initialize pipeline (GPU usage is automatic based on CUDA availability)
+                self._pipeline = PaddleOCRVL()
 
                 elapsed = time.time() - start_time
                 logger.info(f"PaddleOCR-VL pipeline initialized successfully in {elapsed:.2f}s")
-                logger.info(f"GPU enabled: {settings.use_gpu}")
+                logger.info(f"GPU support: {settings.use_gpu}")
 
             except Exception as e:
                 logger.error(f"Failed to initialize PaddleOCR-VL pipeline: {e}")
@@ -160,10 +203,13 @@ class PaddleOCRVLService:
         """
         try:
             # PaddleOCR-VL results have methods like to_dict(), to_markdown(), etc.
-            if hasattr(result, 'to_dict'):
-                return result.to_dict()
+            if hasattr(result, 'to_dict') and callable(result.to_dict):
+                content = result.to_dict()
+                # Make everything serializable recursively
+                return self._make_serializable(content)
             elif hasattr(result, '__dict__'):
-                return result.__dict__
+                # Convert __dict__ to serializable format
+                return self._make_serializable(result.__dict__)
             else:
                 return {"raw": str(result)}
         except Exception as e:
@@ -185,7 +231,11 @@ class PaddleOCRVLService:
         # Try to extract common metadata fields
         for attr in ['bbox', 'confidence', 'type', 'label']:
             if hasattr(result, attr):
-                metadata[attr] = getattr(result, attr)
+                value = getattr(result, attr)
+                # Make value serializable
+                serialized_value = self._make_serializable(value)
+                if serialized_value is not None:
+                    metadata[attr] = serialized_value
 
         return metadata
 
