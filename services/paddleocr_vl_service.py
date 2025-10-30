@@ -202,16 +202,54 @@ class PaddleOCRVLService:
             Dictionary containing extracted text and structure
         """
         try:
-            # PaddleOCR-VL results have methods like to_dict(), to_markdown(), etc.
-            if hasattr(result, 'to_dict') and callable(result.to_dict):
-                content = result.to_dict()
-                # Make everything serializable recursively
-                return self._make_serializable(content)
-            elif hasattr(result, '__dict__'):
-                # Convert __dict__ to serializable format
-                return self._make_serializable(result.__dict__)
-            else:
-                return {"raw": str(result)}
+            # Convert result to string first (it's a complex object)
+            result_str = str(result)
+
+            # Extract parsing_res_list which contains the actual OCR results
+            content = {}
+
+            # Parse the string representation to find content blocks
+            import re
+
+            # Find all content blocks in the format:
+            # label:\ttype\nbbox:\t[coords]\ncontent:\ttext
+            pattern = r'label:\s*(\w+)\s*\n\s*bbox:\s*\[([^\]]+)\]\s*\n\s*content:\s*(.+?)(?=\n#####|$)'
+            matches = re.findall(pattern, result_str, re.DOTALL)
+
+            if matches:
+                blocks = []
+                for label, bbox_str, text in matches:
+                    # Parse bbox coordinates
+                    try:
+                        bbox = [float(x.strip().replace('np.float32(', '').replace(')', ''))
+                               for x in bbox_str.split(',')[:4]]
+                    except:
+                        bbox = []
+
+                    blocks.append({
+                        "type": label.strip(),
+                        "bbox": bbox,
+                        "text": text.strip()
+                    })
+
+                content['blocks'] = blocks
+                # Create a simple text concatenation
+                content['text'] = '\n\n'.join(block['text'] for block in blocks)
+
+            # Try to call conversion methods if available
+            if hasattr(result, 'to_markdown') and callable(result.to_markdown):
+                try:
+                    content['markdown'] = result.to_markdown()
+                except Exception as e:
+                    logger.debug(f"Failed to call to_markdown(): {e}")
+
+            # If we got some content, return it
+            if content:
+                return content
+
+            # Fallback: return string representation
+            return {"raw": result_str}
+
         except Exception as e:
             logger.warning(f"Failed to extract content: {e}")
             return {"raw": str(result)}
