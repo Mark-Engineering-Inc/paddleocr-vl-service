@@ -510,23 +510,39 @@ docker exec paddleocr-vl-service pip install \
 
 ## Development Workflow
 
-### Local Testing (No GPU Required)
+### Local Testing (Platform Limitations)
 
-For development without GPU:
+**⚠️ CRITICAL PLATFORM REQUIREMENTS:**
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+This service is designed for **Linux x86_64 with NVIDIA GPU only**. Local testing without the target platform has significant limitations:
 
-# Set CPU mode
-export USE_GPU=false
-export DEVICE=cpu
+#### Supported Platforms
 
-# Run locally
-python main.py
-```
+| Platform | PaddlePaddle | PaddleOCR | PaddleOCR-VL | Status |
+|----------|--------------|-----------|--------------|---------|
+| **Linux x86_64 + NVIDIA GPU** | ✅ 3.2.0 GPU | ✅ 3.3.0+ | ✅ Full support | **PRODUCTION** |
+| **Linux x86_64 (CPU only)** | ✅ 3.2.0 CPU | ✅ 3.3.0+ | ⚠️ Untested | Development only |
+| **macOS ARM64 (M1/M2/M3)** | ✅ 3.2.1 CPU | ✅ 3.3.0+ | ❌ **NOT SUPPORTED** | **INCOMPATIBLE** |
+| **macOS x86_64 (Intel)** | ✅ CPU only | ✅ 3.3.0+ | ❌ **NOT SUPPORTED** | **INCOMPATIBLE** |
+| **Windows** | ✅ CPU/GPU | ✅ 3.3.0+ | ⚠️ Untested | Not recommended |
 
-**Note:** CPU mode is much slower (~10-20x) but useful for API testing.
+#### Why macOS (M1/M2/M3) is NOT Compatible
+
+**Blocking Issue:** PaddlePaddle-compatible `safetensors` wheel does not exist for ARM64 macOS.
+
+**Technical Details:**
+1. ✅ PaddlePaddle 3.2.1 CPU **installs successfully** on ARM64 macOS
+2. ✅ PaddleOCR 3.3.0+ with doc-parser **installs successfully**
+3. ❌ PaddleOCR-VL **initialization fails** with:
+   ```
+   safetensors_rust.SafetensorError: framework paddle is invalid
+   ```
+
+**Root Cause:**
+- PaddleOCR-VL requires PaddlePaddle-specific `safetensors` (custom wheel)
+- This wheel is only available as: `safetensors-0.6.2-cp38-abi3-linux_x86_64.whl`
+- Standard PyPI `safetensors` doesn't support PaddlePaddle framework
+- No ARM64 macOS build exists
 
 ### Adding New Features
 
