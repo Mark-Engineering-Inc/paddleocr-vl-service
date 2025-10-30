@@ -41,6 +41,9 @@ ENV/
 *~
 .DS_Store
 
+# Claude Code
+.claude/
+
 # Logs
 *.log
 logs/
