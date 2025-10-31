@@ -8,7 +8,7 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 - **Comprehensive Parsing**: Extracts text, tables, formulas, and charts
 - **GPU Accelerated**: Optimized for NVIDIA L4 GPU (g6.xlarge)
 - **RESTful API**: Simple HTTP multipart file upload
-- **Multiple Outputs**: JSON structured data + Markdown formatted text
+- **Raw Results**: Direct output from PaddleOCR-VL's save_to_json() method
 - **Production Ready**: Docker deployment with health checks
 
 ## Quick Start
@@ -26,7 +26,7 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 git clone <repository-url>
 cd paddleocr-vl-service
 
-# Build and run
+# Build and run (first build takes 5-10 minutes to download models)
 docker-compose up -d
 
 # Check status
@@ -34,6 +34,8 @@ curl http://localhost:8000/health
 ```
 
 The service will be available at `http://localhost:8000`
+
+**Note:** Models (~2GB) are pre-downloaded during Docker build, resulting in a ~6.5GB optimized image size but faster startup times.
 
 ## API Documentation
 
@@ -79,38 +81,30 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 ```json
 {
   "success": true,
-  "message": "Document processed successfully. Found 3 elements.",
+  "message": "Document processed successfully. Found 3 results.",
   "processing_time": 5.23,
-  "elements": [
+  "results": [
     {
-      "index": 0,
-      "content": {
-        "text": "Document heading",
-        "type": "text",
-        "bbox": [10, 20, 200, 50]
-      },
-      "metadata": {
-        "confidence": 0.98,
-        "type": "heading"
-      }
+      "type": "text",
+      "bbox": [10, 20, 200, 50],
+      "content": "Document heading",
+      "confidence": 0.98
     },
     {
-      "index": 1,
+      "type": "table",
+      "bbox": [10, 60, 400, 200],
       "content": {
-        "type": "table",
         "rows": 5,
         "columns": 3,
         "data": [...]
-      },
-      "metadata": {
-        "bbox": [10, 60, 400, 200]
       }
     }
   ],
-  "markdown": "# Document OCR Results\n\n## Element 1\n...",
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
+
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. Structure varies based on document content and element types (text, table, chart, formula).
 
 ### Example: Process from Local Machine to Remote Server
 
@@ -118,7 +112,7 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 # Test with sample image
 curl -X POST http://<EC2-PUBLIC-IP>:8000/api/v1/ocr/extract-document \
   -F "file=@/Users/zhangshengjie/Downloads/scan_samples_en/scan_samples_en_63.jpg" \
-  | jq '.elements[] | {index, type: .content.type, text: .content.text}'
+  | jq '.results[] | {type, content}'
 ```
 
 ### Interactive API Documentation
@@ -156,7 +150,7 @@ Access Swagger UI at: `http://localhost:8000/api/v1/docs`
 **Key Components:**
 - **FastAPI**: Web framework with async support
 - **PaddleOCR-VL**: Vision-language OCR model (0.9B parameters)
-- **Lazy Loading**: Models load on first request to speed up startup
+- **Pre-packaged Models**: Models embedded in Docker image for instant availability
 - **Thread-Safe**: Singleton pattern for pipeline management
 
 ## Configuration
@@ -187,7 +181,7 @@ LOG_FORMAT=json
 **Typical Processing Times:**
 - Simple document (1 page, text only): 3-5 seconds
 - Complex document (tables, charts): 5-10 seconds
-- First request (model loading): +10-15 seconds
+- First request (model initialization): 5-10 seconds (models pre-packaged in image)
 
 **GPU Memory Usage:**
 - Model size: ~2GB VRAM
@@ -219,13 +213,18 @@ nvidia-smi -l 1
 
 ## Troubleshooting
 
-### Model Download Issues
+### Docker Build Fails
 
-**Problem:** First request times out or fails
+**Problem:** Build fails during model download step
 
-**Solution:** Models (~2GB) download on first request. Increase timeout or pre-download:
+**Solution:** Ensure network connectivity to PaddlePaddle servers during build:
 ```bash
-docker exec -it paddleocr-vl-service python -c "from paddleocr import PaddleOCRVL; PaddleOCRVL()"
+# Test connection
+curl -I https://paddlepaddle.org.cn
+curl -I https://paddle-whl.bj.bcebos.com
+
+# Retry build
+docker-compose build --no-cache
 ```
 
 ### GPU Not Detected

@@ -36,9 +36,8 @@ services:
     ports:
       - "8000:8000"
 
-    # Volumes for model caching (optional, improves startup time)
+    # Volumes for temporary files only (models now pre-packaged in image)
     volumes:
-      - paddleocr-models:/home/appuser/.paddleocr
       - /tmp/paddleocr:/tmp/paddleocr
 
     # Restart policy
@@ -58,7 +57,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  paddleocr-models:
-    driver: local

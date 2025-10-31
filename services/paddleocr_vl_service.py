@@ -124,7 +124,7 @@ class PaddleOCRVLService:
             image_path: Path to the image file
 
         Returns:
-            List of OCR results with document structure
+            List of raw PaddleOCR-VL results as dictionaries (using save_to_json())
 
         Raises:
             RuntimeError: If pipeline initialization or processing fails
@@ -140,19 +140,20 @@ class PaddleOCRVLService:
             # Run PaddleOCR-VL prediction
             output = self._pipeline.predict(image_path)
 
-            # Convert results to dict format
+            # Convert results using the built-in save_to_json() method
             results = []
-            for idx, res in enumerate(output):
-                # Extract result data
-                result_data = {
-                    "index": idx,
-                    "content": self._extract_content(res),
-                    "metadata": self._extract_metadata(res)
-                }
-                results.append(result_data)
+            for res in output:
+                # Use the result object's built-in JSON serialization
+                if hasattr(res, 'save_to_json') and callable(res.save_to_json):
+                    result_json = res.save_to_json()
+                else:
+                    # Fallback: try to make the result serializable
+                    result_json = self._make_serializable(res)
+
+                results.append(result_json)
 
             elapsed = time.time() - start_time
-            logger.info(f"Image processed successfully in {elapsed:.2f}s - Found {len(results)} elements")
+            logger.info(f"Image processed successfully in {elapsed:.2f}s - Found {len(results)} results")
 
             return results
 
@@ -191,116 +192,6 @@ class PaddleOCRVLService:
             except Exception as e:
                 logger.warning(f"Failed to delete temporary file {temp_path}: {e}")
 
-    def _extract_content(self, result: Any) -> Dict[str, Any]:
-        """
-        Extract content from PaddleOCR-VL result object.
-
-        Args:
-            result: PaddleOCR-VL result object
-
-        Returns:
-            Dictionary containing extracted text and structure
-        """
-        try:
-            # Convert result to string first (it's a complex object)
-            result_str = str(result)
-
-            # Extract parsing_res_list which contains the actual OCR results
-            content = {}
-
-            # Parse the string representation to find content blocks
-            import re
-
-            # Find all content blocks in the format:
-            # label:\ttype\nbbox:\t[coords]\ncontent:\ttext
-            pattern = r'label:\s*(\w+)\s*\n\s*bbox:\s*\[([^\]]+)\]\s*\n\s*content:\s*(.+?)(?=\n#####|$)'
-            matches = re.findall(pattern, result_str, re.DOTALL)
-
-            if matches:
-                blocks = []
-                for label, bbox_str, text in matches:
-                    # Parse bbox coordinates
-                    try:
-                        bbox = [float(x.strip().replace('np.float32(', '').replace(')', ''))
-                               for x in bbox_str.split(',')[:4]]
-                    except:
-                        bbox = []
-
-                    blocks.append({
-                        "type": label.strip(),
-                        "bbox": bbox,
-                        "text": text.strip()
-                    })
-
-                content['blocks'] = blocks
-                # Create a simple text concatenation
-                content['text'] = '\n\n'.join(block['text'] for block in blocks)
-
-            # Try to call conversion methods if available
-            if hasattr(result, 'to_markdown') and callable(result.to_markdown):
-                try:
-                    content['markdown'] = result.to_markdown()
-                except Exception as e:
-                    logger.debug(f"Failed to call to_markdown(): {e}")
-
-            # If we got some content, return it
-            if content:
-                return content
-
-            # Fallback: return string representation
-            return {"raw": result_str}
-
-        except Exception as e:
-            logger.warning(f"Failed to extract content: {e}")
-            return {"raw": str(result)}
-
-    def _extract_metadata(self, result: Any) -> Dict[str, Any]:
-        """
-        Extract metadata from PaddleOCR-VL result object.
-
-        Args:
-            result: PaddleOCR-VL result object
-
-        Returns:
-            Dictionary containing metadata
-        """
-        metadata = {}
-
-        # Try to extract common metadata fields
-        for attr in ['bbox', 'confidence', 'type', 'label']:
-            if hasattr(result, attr):
-                value = getattr(result, attr)
-                # Make value serializable
-                serialized_value = self._make_serializable(value)
-                if serialized_value is not None:
-                    metadata[attr] = serialized_value
-
-        return metadata
-
-    def get_markdown_output(self, results: List[Dict[str, Any]]) -> str:
-        """
-        Convert results to markdown format.
-
-        Args:
-            results: List of OCR results
-
-        Returns:
-            Markdown formatted string
-        """
-        markdown_parts = []
-        markdown_parts.append("# Document OCR Results\n")
-
-        for idx, result in enumerate(results):
-            markdown_parts.append(f"\n## Element {idx + 1}\n")
-
-            content = result.get("content", {})
-            if isinstance(content, dict):
-                for key, value in content.items():
-                    markdown_parts.append(f"**{key}**: {value}\n")
-            else:
-                markdown_parts.append(f"{content}\n")
-
-        return "\n".join(markdown_parts)
 
     def is_ready(self) -> bool:
         """Check if the pipeline is initialized and ready."""

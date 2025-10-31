@@ -7,21 +7,24 @@ from datetime import datetime
 
 
 class OCRElement(BaseModel):
-    """Represents a single OCR element (text, table, chart, formula, etc.)."""
+    """Represents a single raw PaddleOCR-VL result element.
 
-    index: int = Field(..., description="Element index in the document")
-    content: Dict[str, Any] = Field(..., description="Element content (text, structure, etc.)")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Element metadata (bbox, confidence, type, etc.)")
+    This is a flexible container for raw results from PaddleOCR-VL's save_to_json() method.
+    The exact structure depends on the PaddleOCR-VL output format.
+    """
+
+    class Config:
+        # Allow arbitrary fields to handle raw PaddleOCR-VL output
+        extra = "allow"
 
 
 class OCRResponse(BaseModel):
-    """Response model for OCR extraction."""
+    """Response model for OCR extraction with raw PaddleOCR-VL results."""
 
     success: bool = Field(..., description="Whether the OCR processing was successful")
     message: str = Field(..., description="Status message")
     processing_time: float = Field(..., description="Processing time in seconds")
-    elements: List[OCRElement] = Field(default_factory=list, description="Extracted OCR elements")
-    markdown: Optional[str] = Field(None, description="Markdown formatted output")
+    results: List[Dict[str, Any]] = Field(default_factory=list, description="Raw PaddleOCR-VL results from save_to_json()")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
 
     class Config:
@@ -30,20 +33,13 @@ class OCRResponse(BaseModel):
                 "success": True,
                 "message": "Document processed successfully",
                 "processing_time": 5.23,
-                "elements": [
+                "results": [
                     {
-                        "index": 0,
-                        "content": {
-                            "text": "Sample document text",
-                            "type": "text"
-                        },
-                        "metadata": {
-                            "bbox": [10, 20, 100, 50],
-                            "confidence": 0.98
-                        }
+                        "type": "text",
+                        "bbox": [10, 20, 100, 50],
+                        "content": "Sample document text"
                     }
                 ],
-                "markdown": "# Document OCR Results\n\n## Element 1\n\n**text**: Sample document text",
                 "timestamp": "2025-01-15T10:30:00Z"
             }
         }
