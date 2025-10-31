@@ -10,7 +10,7 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) and de
 - **Framework**: FastAPI (Python 3.10)
 - **OCR Engine**: PaddleOCR-VL 0.9B (NaViT + ERNIE-4.5)
 - **GPU**: NVIDIA L4 (CUDA 12.4)
-- **Deployment**: Docker + docker-compose (image size: ~3.5-4GB with pre-packaged models)
+- **Deployment**: Docker + docker-compose (image size: ~6.5GB optimized with pre-packaged models)
 - **Target**: AWS EC2 g6.xlarge (us-west-2)
 
 ## Project Structure

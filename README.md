@@ -35,7 +35,7 @@ curl http://localhost:8000/health
 
 The service will be available at `http://localhost:8000`
 
-**Note:** Models (~2GB) are pre-downloaded during Docker build, resulting in a ~3.5-4GB image size but faster startup times.
+**Note:** Models (~2GB) are pre-downloaded during Docker build, resulting in a ~6.5GB optimized image size but faster startup times.
 
 ## API Documentation
 

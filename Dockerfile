@@ -4,7 +4,7 @@
 # ================================
 # Stage 1: Builder
 # ================================
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS builder
+FROM nvidia/cuda:12.4.0-base-ubuntu22.04 AS builder
 
 # Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -53,10 +53,16 @@ RUN python -m pip install --no-cache-dir \
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt
 
+# Clean up builder stage to reduce size of copied artifacts
+RUN pip uninstall -y pip setuptools wheel && \
+    rm -rf /root/.cache /tmp/* && \
+    find /usr/local/lib/python3.10/dist-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.10/dist-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
 # ================================
 # Stage 2: Runtime
 # ================================
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.0-base-ubuntu22.04
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -82,6 +88,13 @@ RUN ln -sf /usr/bin/python3.10 /usr/bin/python
 # Copy Python packages from builder
 COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Remove build tools and clean up Python packages to reduce image size
+RUN rm -rf /usr/local/bin/pip* /usr/local/bin/wheel && \
+    rm -rf /usr/local/lib/python3.10/dist-packages/{pip,pip-*,setuptools,setuptools-*,wheel,wheel-*,pkg_resources} && \
+    find /usr/local/lib/python3.10/dist-packages -name "*.pyc" -delete && \
+    find /usr/local/lib/python3.10/dist-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.10/dist-packages -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash appuser
