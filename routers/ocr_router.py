@@ -1,13 +1,14 @@
 """
 OCR API router with endpoints for document processing.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
-from pathlib import Path
+
 import time
+from pathlib import Path
 
 from config.logging_config import get_logger
 from config.settings import settings
-from models.api_models import OCRResponse, OCRElement, ErrorResponse
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from models.api_models import ErrorResponse, OCRElement, OCRResponse
 from services.paddleocr_vl_service import paddleocr_vl_service
 
 logger = get_logger(__name__)
@@ -21,10 +22,10 @@ router = APIRouter(prefix="/ocr", tags=["OCR"])
     responses={
         400: {"model": ErrorResponse, "description": "Bad request - invalid file"},
         413: {"model": ErrorResponse, "description": "File too large"},
-        500: {"model": ErrorResponse, "description": "Processing error"}
+        500: {"model": ErrorResponse, "description": "Processing error"},
     },
     summary="Extract document structure and text",
-    description="Upload an image or PDF file to extract document structure including text, tables, charts, and formulas."
+    description="Upload an image or PDF file to extract document structure including text, tables, charts, and formulas.",
 )
 async def extract_document(
     file: UploadFile = File(..., description="Image or PDF file to process")
@@ -52,7 +53,7 @@ async def extract_document(
             logger.warning(f"Invalid file extension: {file_ext}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid file format '{file_ext}'. Allowed: {', '.join(settings.allowed_extensions)}"
+                detail=f"Invalid file format '{file_ext}'. Allowed: {', '.join(settings.allowed_extensions)}",
             )
 
         # Read file content
@@ -61,25 +62,25 @@ async def extract_document(
 
         # Validate file size
         if file_size > settings.max_upload_size:
-            logger.warning(f"File too large: {file_size} bytes (max: {settings.max_upload_size})")
+            logger.warning(
+                f"File too large: {file_size} bytes (max: {settings.max_upload_size})"
+            )
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File too large. Maximum size: {settings.max_upload_size / (1024*1024):.1f}MB"
+                detail=f"File too large. Maximum size: {settings.max_upload_size / (1024*1024):.1f}MB",
             )
 
         if file_size == 0:
             logger.warning("Empty file uploaded")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Empty file uploaded"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file uploaded"
             )
 
         logger.info(f"Processing file: {file.filename} ({file_size} bytes)")
 
         # Process image
         results = paddleocr_vl_service.process_image_bytes(
-            image_bytes=file_content,
-            filename=file.filename
+            image_bytes=file_content, filename=file.filename
         )
 
         # Convert results to response model
@@ -87,7 +88,7 @@ async def extract_document(
             OCRElement(
                 index=result["index"],
                 content=result["content"],
-                metadata=result["metadata"]
+                metadata=result["metadata"],
             )
             for result in results
         ]
@@ -108,7 +109,7 @@ async def extract_document(
             message=f"Document processed successfully. Found {len(elements)} elements.",
             processing_time=processing_time,
             elements=elements,
-            markdown=markdown
+            markdown=markdown,
         )
 
     except HTTPException:
@@ -118,5 +119,5 @@ async def extract_document(
         logger.error(f"Error processing document: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Processing error: {str(e)}"
+            detail=f"Processing error: {str(e)}",
         )

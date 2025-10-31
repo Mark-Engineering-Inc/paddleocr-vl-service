@@ -1,8 +1,8 @@
 """
 Application settings configuration using Pydantic BaseSettings.
 """
+
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):

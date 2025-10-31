@@ -4,13 +4,14 @@ PaddleOCR-VL Service - FastAPI application entry point.
 A GPU-accelerated document OCR service using PaddleOCR-VL for
 extracting text, tables, charts, and formulas from documents.
 """
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 
-from config import settings, setup_logging, get_logger
+from contextlib import asynccontextmanager
+
+import uvicorn
+from config import get_logger, settings, setup_logging
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from models.api_models import HealthResponse
 from routers import ocr_router
 from services import paddleocr_vl_service
@@ -39,8 +40,12 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info(f"GPU Enabled: {settings.use_gpu}")
     logger.info(f"Max Upload Size: {settings.max_upload_size / (1024*1024):.1f}MB")
-    logger.info(f"API Endpoint: http://{settings.app_host}:{settings.app_port}{settings.api_v1_prefix}")
-    logger.info(f"Note: PaddleOCR-VL pipeline will be initialized on first request (lazy loading)")
+    logger.info(
+        f"API Endpoint: http://{settings.app_host}:{settings.app_port}{settings.api_v1_prefix}"
+    )
+    logger.info(
+        f"Note: PaddleOCR-VL pipeline will be initialized on first request (lazy loading)"
+    )
     logger.info("=" * 80)
 
     yield
@@ -59,7 +64,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=f"{settings.api_v1_prefix}/docs",
     redoc_url=f"{settings.api_v1_prefix}/redoc",
-    openapi_url=f"{settings.api_v1_prefix}/openapi.json"
+    openapi_url=f"{settings.api_v1_prefix}/openapi.json",
 )
 
 # Add CORS middleware
@@ -89,7 +94,7 @@ async def health_check() -> HealthResponse:
         service=settings.app_name,
         version=settings.app_version,
         gpu_enabled=service_status["gpu_enabled"],
-        pipeline_ready=service_status["initialized"]
+        pipeline_ready=service_status["initialized"],
     )
 
 
@@ -101,7 +106,7 @@ async def root():
         "version": settings.app_version,
         "status": "running",
         "docs": f"{settings.api_v1_prefix}/docs",
-        "health": "/health"
+        "health": "/health",
     }
 
 
@@ -114,8 +119,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "success": False,
             "message": "Internal server error",
-            "error_type": type(exc).__name__
-        }
+            "error_type": type(exc).__name__,
+        },
     )
 
 
@@ -126,5 +131,5 @@ if __name__ == "__main__":
         host=settings.app_host,
         port=settings.app_port,
         reload=settings.debug,
-        log_level=settings.log_level.lower()
+        log_level=settings.log_level.lower(),
     )

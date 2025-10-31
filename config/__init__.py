@@ -1,5 +1,6 @@
 """Configuration package."""
+
+from config.logging_config import get_logger, setup_logging
 from config.settings import settings
-from config.logging_config import setup_logging, get_logger
 
 __all__ = ["settings", "setup_logging", "get_logger"]

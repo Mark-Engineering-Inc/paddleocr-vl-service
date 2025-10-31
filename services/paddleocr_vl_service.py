@@ -1,12 +1,13 @@
 """
 PaddleOCR-VL service wrapper for document OCR processing.
 """
-import threading
-from typing import Optional, Dict, Any, List
-from pathlib import Path
-import tempfile
-import time
+
 import json
+import tempfile
+import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -38,7 +39,9 @@ class PaddleOCRVLService:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    logger.info("PaddleOCRVLService instance created (pipeline will be initialized on first use)")
+                    logger.info(
+                        "PaddleOCRVLService instance created (pipeline will be initialized on first use)"
+                    )
                     self._initialized = True
 
     def _make_serializable(self, obj: Any) -> Any:
@@ -62,19 +65,21 @@ class PaddleOCRVLService:
 
         # Handle dicts
         if isinstance(obj, dict):
-            return {k: self._make_serializable(v) for k, v in obj.items() if not callable(v)}
+            return {
+                k: self._make_serializable(v) for k, v in obj.items() if not callable(v)
+            }
 
         # Skip callables (methods, functions)
         if callable(obj):
             return None
 
         # Try to convert to dict if it has __dict__
-        if hasattr(obj, '__dict__'):
+        if hasattr(obj, "__dict__"):
             try:
                 return {
                     k: self._make_serializable(v)
                     for k, v in obj.__dict__.items()
-                    if not k.startswith('_') and not callable(v)
+                    if not k.startswith("_") and not callable(v)
                 }
             except Exception:
                 pass
@@ -109,7 +114,9 @@ class PaddleOCRVLService:
                 self._pipeline = PaddleOCRVL()
 
                 elapsed = time.time() - start_time
-                logger.info(f"PaddleOCR-VL pipeline initialized successfully in {elapsed:.2f}s")
+                logger.info(
+                    f"PaddleOCR-VL pipeline initialized successfully in {elapsed:.2f}s"
+                )
                 logger.info(f"GPU support: {settings.use_gpu}")
 
             except Exception as e:
@@ -147,12 +154,14 @@ class PaddleOCRVLService:
                 result_data = {
                     "index": idx,
                     "content": self._extract_content(res),
-                    "metadata": self._extract_metadata(res)
+                    "metadata": self._extract_metadata(res),
                 }
                 results.append(result_data)
 
             elapsed = time.time() - start_time
-            logger.info(f"Image processed successfully in {elapsed:.2f}s - Found {len(results)} elements")
+            logger.info(
+                f"Image processed successfully in {elapsed:.2f}s - Found {len(results)} elements"
+            )
 
             return results
 
@@ -160,7 +169,9 @@ class PaddleOCRVLService:
             logger.error(f"Error processing image: {e}")
             raise RuntimeError(f"Image processing failed: {e}") from e
 
-    def process_image_bytes(self, image_bytes: bytes, filename: str = "image.jpg") -> List[Dict[str, Any]]:
+    def process_image_bytes(
+        self, image_bytes: bytes, filename: str = "image.jpg"
+    ) -> List[Dict[str, Any]]:
         """
         Process image from bytes.
 
@@ -213,7 +224,7 @@ class PaddleOCRVLService:
 
             # Find all content blocks in the format:
             # label:\ttype\nbbox:\t[coords]\ncontent:\ttext
-            pattern = r'label:\s*(\w+)\s*\n\s*bbox:\s*\[([^\]]+)\]\s*\n\s*content:\s*(.+?)(?=\n#####|$)'
+            pattern = r"label:\s*(\w+)\s*\n\s*bbox:\s*\[([^\]]+)\]\s*\n\s*content:\s*(.+?)(?=\n#####|$)"
             matches = re.findall(pattern, result_str, re.DOTALL)
 
             if matches:
@@ -221,25 +232,25 @@ class PaddleOCRVLService:
                 for label, bbox_str, text in matches:
                     # Parse bbox coordinates
                     try:
-                        bbox = [float(x.strip().replace('np.float32(', '').replace(')', ''))
-                               for x in bbox_str.split(',')[:4]]
+                        bbox = [
+                            float(x.strip().replace("np.float32(", "").replace(")", ""))
+                            for x in bbox_str.split(",")[:4]
+                        ]
                     except:
                         bbox = []
 
-                    blocks.append({
-                        "type": label.strip(),
-                        "bbox": bbox,
-                        "text": text.strip()
-                    })
+                    blocks.append(
+                        {"type": label.strip(), "bbox": bbox, "text": text.strip()}
+                    )
 
-                content['blocks'] = blocks
+                content["blocks"] = blocks
                 # Create a simple text concatenation
-                content['text'] = '\n\n'.join(block['text'] for block in blocks)
+                content["text"] = "\n\n".join(block["text"] for block in blocks)
 
             # Try to call conversion methods if available
-            if hasattr(result, 'to_markdown') and callable(result.to_markdown):
+            if hasattr(result, "to_markdown") and callable(result.to_markdown):
                 try:
-                    content['markdown'] = result.to_markdown()
+                    content["markdown"] = result.to_markdown()
                 except Exception as e:
                     logger.debug(f"Failed to call to_markdown(): {e}")
 
@@ -267,7 +278,7 @@ class PaddleOCRVLService:
         metadata = {}
 
         # Try to extract common metadata fields
-        for attr in ['bbox', 'confidence', 'type', 'label']:
+        for attr in ["bbox", "confidence", "type", "label"]:
             if hasattr(result, attr):
                 value = getattr(result, attr)
                 # Make value serializable
@@ -311,7 +322,7 @@ class PaddleOCRVLService:
         return {
             "initialized": self.is_ready(),
             "gpu_enabled": settings.use_gpu,
-            "device": settings.device
+            "device": settings.device,
         }
 
 

@@ -15,7 +15,7 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [ gpu ]
 
     # Environment variables
     environment:
@@ -28,7 +28,7 @@ services:
       - LOG_FORMAT=json
       - USE_GPU=true
       - DEVICE=gpu
-      - MAX_UPLOAD_SIZE=52428800  # 50MB
+      - MAX_UPLOAD_SIZE=52428800 # 50MB
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
@@ -36,9 +36,8 @@ services:
     ports:
       - "8000:8000"
 
-    # Volumes for model caching (optional, improves startup time)
+    # Volumes for temporary files
     volumes:
-      - paddleocr-models:/home/appuser/.paddleocr
       - /tmp/paddleocr:/tmp/paddleocr
 
     # Restart policy
@@ -46,7 +45,7 @@ services:
 
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -58,7 +57,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  paddleocr-models:
-    driver: local

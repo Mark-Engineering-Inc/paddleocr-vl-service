@@ -1,9 +1,10 @@
 """
 Logging configuration for the application.
 """
+
 import logging
 import sys
-from typing import Any, Dict
+
 from config.settings import settings
 
 
@@ -29,7 +30,7 @@ def setup_logging() -> None:
         )
     else:
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
     console_handler.setFormatter(formatter)
@@ -41,7 +42,9 @@ def setup_logging() -> None:
     logging.getLogger("PIL").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    logger.info(f"Logging configured - Level: {settings.log_level}, Format: {settings.log_format}")
+    logger.info(
+        f"Logging configured - Level: {settings.log_level}, Format: {settings.log_format}"
+    )
 
 
 def get_logger(name: str) -> logging.Logger:
