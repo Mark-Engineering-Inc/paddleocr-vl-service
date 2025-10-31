@@ -4,7 +4,7 @@
 # ================================
 # Stage 1: Builder
 # ================================
-FROM nvidia/cuda:12.4.0-base-ubuntu22.04 AS builder
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS builder
 
 # Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
@@ -62,7 +62,7 @@ RUN pip uninstall -y pip setuptools wheel && \
 # ================================
 # Stage 2: Runtime
 # ================================
-FROM nvidia/cuda:12.4.0-base-ubuntu22.04
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -93,8 +93,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 RUN rm -rf /usr/local/bin/pip* /usr/local/bin/wheel && \
     rm -rf /usr/local/lib/python3.10/dist-packages/{pip,pip-*,setuptools,setuptools-*,wheel,wheel-*,pkg_resources} && \
     find /usr/local/lib/python3.10/dist-packages -name "*.pyc" -delete && \
-    find /usr/local/lib/python3.10/dist-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find /usr/local/lib/python3.10/dist-packages -name "tests" -type d -exec rm -rf {} + 2>/dev/null || true
+    find /usr/local/lib/python3.10/dist-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Create non-root user for security
 RUN useradd -m -u 1000 -s /bin/bash appuser

@@ -8,7 +8,7 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 - **Comprehensive Parsing**: Extracts text, tables, formulas, and charts
 - **GPU Accelerated**: Optimized for NVIDIA L4 GPU (g6.xlarge)
 - **RESTful API**: Simple HTTP multipart file upload
-- **Multiple Outputs**: JSON structured data + Markdown formatted text
+- **Raw Results**: Direct output from PaddleOCR-VL's save_to_json() method
 - **Production Ready**: Docker deployment with health checks
 
 ## Quick Start
@@ -81,38 +81,30 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 ```json
 {
   "success": true,
-  "message": "Document processed successfully. Found 3 elements.",
+  "message": "Document processed successfully. Found 3 results.",
   "processing_time": 5.23,
-  "elements": [
+  "results": [
     {
-      "index": 0,
-      "content": {
-        "text": "Document heading",
-        "type": "text",
-        "bbox": [10, 20, 200, 50]
-      },
-      "metadata": {
-        "confidence": 0.98,
-        "type": "heading"
-      }
+      "type": "text",
+      "bbox": [10, 20, 200, 50],
+      "content": "Document heading",
+      "confidence": 0.98
     },
     {
-      "index": 1,
+      "type": "table",
+      "bbox": [10, 60, 400, 200],
       "content": {
-        "type": "table",
         "rows": 5,
         "columns": 3,
         "data": [...]
-      },
-      "metadata": {
-        "bbox": [10, 60, 400, 200]
       }
     }
   ],
-  "markdown": "# Document OCR Results\n\n## Element 1\n...",
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
+
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. Structure varies based on document content and element types (text, table, chart, formula).
 
 ### Example: Process from Local Machine to Remote Server
 
@@ -120,7 +112,7 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 # Test with sample image
 curl -X POST http://<EC2-PUBLIC-IP>:8000/api/v1/ocr/extract-document \
   -F "file=@/Users/zhangshengjie/Downloads/scan_samples_en/scan_samples_en_63.jpg" \
-  | jq '.elements[] | {index, type: .content.type, text: .content.text}'
+  | jq '.results[] | {type, content}'
 ```
 
 ### Interactive API Documentation

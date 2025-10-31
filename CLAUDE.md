@@ -79,7 +79,7 @@ paddleocr-vl-service/
 │  - NaViT visual encoder (dynamic resolution)   │
 │  - ERNIE-4.5-0.3B language model                │
 │  - Grouped Query Attention (GQA)                │
-│  - Output: Structured elements + metadata       │
+│  - Output: Raw JSON results via save_to_json()  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -100,7 +100,12 @@ paddleocr-vl-service/
 - PaddleOCR-VL requires file paths, not in-memory bytes
 - Automatic cleanup even on errors
 
-**4. Lifespan Management**
+**4. Raw Result Passthrough**
+- Results use PaddleOCR-VL's built-in `save_to_json()` method
+- No custom parsing or transformation
+- Preserves all original data from the model
+
+**5. Lifespan Management**
 - FastAPI async context manager for startup/shutdown
 - Logs configuration on startup
 - Graceful cleanup on shutdown
@@ -153,19 +158,26 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 ```json
 {
   "success": true,
-  "message": "Document processed successfully. Found 3 elements.",
+  "message": "Document processed successfully. Found 3 results.",
   "processing_time": 5.23,
-  "elements": [
+  "results": [
     {
-      "index": 0,
-      "content": {"text": "...", "type": "text"},
-      "metadata": {"bbox": [x1, y1, x2, y2], "confidence": 0.98}
+      "type": "text",
+      "bbox": [10, 20, 100, 50],
+      "content": "Sample document text",
+      "confidence": 0.98
     }
   ],
-  "markdown": "# Document OCR Results\n...",
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
+
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. The exact structure depends on the document content and may include fields like:
+- `type`: Element type (text, table, chart, formula, etc.)
+- `bbox`: Bounding box coordinates [x1, y1, x2, y2]
+- `content`: Extracted text or structured data
+- `confidence`: OCR confidence score
+- Additional fields depending on element type
 
 **Error Responses:**
 - `400 Bad Request`: Invalid file format or empty file
