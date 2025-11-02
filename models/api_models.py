@@ -31,16 +31,42 @@ class OCRResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "success": True,
-                "message": "Document processed successfully",
-                "processing_time": 5.23,
+                "message": "Document processed successfully. Found 1 results.",
+                "processing_time": 24.15,
                 "results": [
                     {
-                        "type": "text",
-                        "bbox": [10, 20, 100, 50],
-                        "content": "Sample document text"
+                        "input_path": "/tmp/tmpg9eao3jp.jpg",
+                        "page_index": None,
+                        "model_settings": {
+                            "use_doc_preprocessor": False,
+                            "use_layout_detection": True,
+                            "use_chart_recognition": False,
+                            "format_block_content": False
+                        },
+                        "parsing_res_list": [
+                            {
+                                "block_label": "text",
+                                "block_content": "Extracted document text content...",
+                                "block_bbox": [9, 22, 381, 94],
+                                "block_id": 0,
+                                "block_order": 1
+                            }
+                        ],
+                        "layout_det_res": {
+                            "input_path": None,
+                            "page_index": None,
+                            "boxes": [
+                                {
+                                    "cls_id": 22,
+                                    "label": "text",
+                                    "score": 0.7198508381843567,
+                                    "coordinate": [9.689, 22.654, 381.0, 94.012]
+                                }
+                            ]
+                        }
                     }
                 ],
-                "timestamp": "2025-01-15T10:30:00Z"
+                "timestamp": "2025-11-02T05:04:42.465560"
             }
         }
 
