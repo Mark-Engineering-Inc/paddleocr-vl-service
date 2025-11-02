@@ -97,6 +97,7 @@ paddleocr-vl-service/
 - Improves container startup time (~5 seconds for health checks)
 - Model download (~2GB) happens automatically on first API request (~1-2 seconds)
 - Models persist in Docker volume across container restarts
+- Note: Model pre-download during build is not possible because NVIDIA driver (libcuda.so.1) is unavailable during Docker build, even with runtime image
 
 **3. Temporary File Handling**
 - API receives bytes → write to temp file → process → delete
@@ -407,16 +408,7 @@ docker exec paddleocr-vl-service nvidia-smi
    DOCKER_BUILDKIT=1 docker-compose build --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
    ```
 
-3. Check proxy settings (if behind corporate firewall):
-   ```bash
-   # Add to Dockerfile before model download
-   ENV HTTP_PROXY=http://your-proxy:port
-   ENV HTTPS_PROXY=http://your-proxy:port
-   ```
-
-4. Verify sufficient disk space for build (~5GB needed)
-
-**Note:** Model download now happens during Docker build, not at runtime. If build succeeds, models are guaranteed to be present.
+3. Verify sufficient disk space for build and image (~7GB total: ~3GB build artifacts + ~4GB final image)
 
 ### Issue: GPU Not Detected
 

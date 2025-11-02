@@ -6,9 +6,10 @@
 # Target: AWS EC2 g6.xlarge (NVIDIA L4 GPU)
 #
 # Build Requirements:
-#   - Local PaddlePaddle wheel file (1.8GB) in project root
-#   - Docker with NVIDIA Container Toolkit
-#   - 50GB+ free disk space
+#   - Local PaddlePaddle wheel file (1.8GB) stored outside git repo
+#     Download: https://paddle-whl.bj.bcebos.com/stable/cu126/paddlepaddle-gpu/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl
+#   - Docker 24.0+ with NVIDIA Container Toolkit (nvidia-container-toolkit package)
+#   - 30GB+ free disk space for build artifacts and layers
 #
 # Build Command:
 #   docker-compose build
@@ -25,6 +26,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1
 
 # Install build dependencies and Python 3.10
+# Note: Using Python 3.10 (Ubuntu 22.04 default) instead of 3.13.5 because:
+#   - Python 3.13 not available in Ubuntu 22.04 repos (would require PPA or different base image)
+#   - PaddlePaddle GPU 3.2.0 is tested and certified with Python 3.10
+#   - Changing Python version risks compatibility issues with CUDA/PaddlePaddle stack
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 \
     python3-pip \
