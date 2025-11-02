@@ -162,26 +162,57 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 ```json
 {
   "success": true,
-  "message": "Document processed successfully. Found 3 results.",
-  "processing_time": 5.23,
+  "message": "Document processed successfully. Found 1 results.",
+  "processing_time": 24.15,
   "results": [
     {
-      "type": "text",
-      "bbox": [10, 20, 100, 50],
-      "content": "Sample document text",
-      "confidence": 0.98
+      "input_path": "/tmp/tmpg9eao3jp.jpg",
+      "page_index": null,
+      "model_settings": {
+        "use_doc_preprocessor": false,
+        "use_layout_detection": true,
+        "use_chart_recognition": false,
+        "format_block_content": false
+      },
+      "parsing_res_list": [
+        {
+          "block_label": "text",
+          "block_content": "Extracted document text content...",
+          "block_bbox": [9, 22, 381, 94],
+          "block_id": 0,
+          "block_order": 1
+        }
+      ],
+      "layout_det_res": {
+        "input_path": null,
+        "page_index": null,
+        "boxes": [
+          {
+            "cls_id": 22,
+            "label": "text",
+            "score": 0.7198508381843567,
+            "coordinate": [9.689, 22.654, 381.0, 94.012]
+          }
+        ]
+      }
     }
   ],
-  "timestamp": "2025-01-15T10:30:00Z"
+  "timestamp": "2025-11-02T05:04:42.465560"
 }
 ```
 
-**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. The exact structure depends on the document content and may include fields like:
-- `type`: Element type (text, table, chart, formula, etc.)
-- `bbox`: Bounding box coordinates [x1, y1, x2, y2]
-- `content`: Extracted text or structured data
-- `confidence`: OCR confidence score
-- Additional fields depending on element type
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. The exact structure depends on the document content and includes:
+- `parsing_res_list[]`: Array of extracted content blocks
+  - `block_label`: Element type (text, table, chart, formula, etc.)
+  - `block_bbox`: Bounding box coordinates [x1, y1, x2, y2]
+  - `block_content`: Extracted text or structured data
+  - `block_id`, `block_order`: Block identification and ordering
+- `layout_det_res.boxes[]`: Layout detection results
+  - `label`: Detected element type
+  - `score`: OCR confidence score (0-1)
+  - `coordinate`: Precise bounding box coordinates
+- `model_settings`: Processing configuration used
+- Additional fields depending on element type and processing options
 
 **Error Responses:**
 - `400 Bad Request`: Invalid file format or empty file
@@ -347,8 +378,14 @@ curl -X POST http://<EC2_PUBLIC_IP>:8000/api/v1/ocr/extract-document \
   -F "file=@/Users/zhangshengjie/Downloads/scan_samples_en/scan_samples_en_63.jpg" \
   -o result.json
 
-# View results
-cat result.json | jq '.elements[] | {index, content}'
+# View results - extract text blocks
+cat result.json | jq '.results[].parsing_res_list[] | {block_label, block_content}'
+
+# Extract all text content only
+cat result.json | jq -r '.results[].parsing_res_list[].block_content'
+
+# View layout detection scores
+cat result.json | jq '.results[].layout_det_res.boxes[] | {label, score}'
 ```
 
 ## Performance Tuning

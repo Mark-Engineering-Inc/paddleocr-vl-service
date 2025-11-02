@@ -93,38 +93,67 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 ```json
 {
   "success": true,
-  "message": "Document processed successfully. Found 3 results.",
-  "processing_time": 5.23,
+  "message": "Document processed successfully. Found 1 results.",
+  "processing_time": 24.15,
   "results": [
     {
-      "type": "text",
-      "bbox": [10, 20, 200, 50],
-      "content": "Document heading",
-      "confidence": 0.98
-    },
-    {
-      "type": "table",
-      "bbox": [10, 60, 400, 200],
-      "content": {
-        "rows": 5,
-        "columns": 3,
-        "data": [...]
+      "input_path": "/tmp/tmpg9eao3jp.jpg",
+      "page_index": null,
+      "model_settings": {
+        "use_doc_preprocessor": false,
+        "use_layout_detection": true,
+        "use_chart_recognition": false,
+        "format_block_content": false
+      },
+      "parsing_res_list": [
+        {
+          "block_label": "text",
+          "block_content": "Extracted document text content...",
+          "block_bbox": [9, 22, 381, 94],
+          "block_id": 0,
+          "block_order": 1
+        }
+      ],
+      "layout_det_res": {
+        "input_path": null,
+        "page_index": null,
+        "boxes": [
+          {
+            "cls_id": 22,
+            "label": "text",
+            "score": 0.7198508381843567,
+            "coordinate": [9.689, 22.654, 381.0, 94.012]
+          }
+        ]
       }
     }
   ],
-  "timestamp": "2025-01-15T10:30:00Z"
+  "timestamp": "2025-11-02T05:04:42.465560"
 }
 ```
 
-**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. Structure varies based on document content and element types (text, table, chart, formula).
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. Key fields:
+- `parsing_res_list[]`: Extracted content blocks with `block_label` (type), `block_content` (text), `block_bbox` (coordinates)
+- `layout_det_res.boxes[]`: Layout detection results with confidence scores
+- Structure varies based on document content and element types (text, table, chart, formula)
 
 ### Example: Process from Local Machine to Remote Server
 
 ```bash
-# Test with sample image
+# Test with sample image and extract text blocks
 curl -X POST http://<EC2-PUBLIC-IP>:8000/api/v1/ocr/extract-document \
   -F "file=@/Users/zhangshengjie/Downloads/scan_samples_en/scan_samples_en_63.jpg" \
-  | jq '.results[] | {type, content}'
+  | jq '.results[].parsing_res_list[] | {block_label, block_content}'
+
+# Extract all text content only
+curl -X POST http://<EC2-PUBLIC-IP>:8000/api/v1/ocr/extract-document \
+  -F "file=@document.jpg" \
+  | jq -r '.results[].parsing_res_list[].block_content'
+
+# Get layout detection scores
+curl -X POST http://<EC2-PUBLIC-IP>:8000/api/v1/ocr/extract-document \
+  -F "file=@document.jpg" \
+  | jq '.results[].layout_det_res.boxes[] | {label, score}'
 ```
 
 ### Interactive API Documentation
