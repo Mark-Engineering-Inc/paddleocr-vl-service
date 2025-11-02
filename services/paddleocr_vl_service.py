@@ -41,62 +41,6 @@ class PaddleOCRVLService:
                     logger.info("PaddleOCRVLService instance created (pipeline will be initialized on first use)")
                     self._initialized = True
 
-    def _make_serializable(self, obj: Any) -> Any:
-        """
-        Convert any object to JSON-serializable format.
-        Handles nested structures, filters out methods, and converts complex types.
-
-        WARNING: This method should NOT be called in normal operation.
-        It exists only as a fallback for objects without to_dict() support.
-        If you see this warning, the PaddleOCR-VL result object structure may have changed.
-
-        Args:
-            obj: Any Python object
-
-        Returns:
-            JSON-serializable version of the object
-        """
-        logger.warning(
-            "⚠️  _make_serializable() called - this is unexpected! "
-            "PaddleOCR-VL results should have to_dict() method. "
-            f"Object type: {type(obj).__name__}"
-        )
-
-        # Handle None, primitives (str, int, float, bool)
-        if obj is None or isinstance(obj, (str, int, float, bool)):
-            return obj
-
-        # Handle lists
-        if isinstance(obj, (list, tuple)):
-            return [self._make_serializable(item) for item in obj]
-
-        # Handle dicts
-        if isinstance(obj, dict):
-            return {k: self._make_serializable(v) for k, v in obj.items() if not callable(v)}
-
-        # Skip callables (methods, functions)
-        if callable(obj):
-            return None
-
-        # Try to convert to dict if it has __dict__
-        if hasattr(obj, '__dict__'):
-            try:
-                return {
-                    k: self._make_serializable(v)
-                    for k, v in obj.__dict__.items()
-                    if not k.startswith('_') and not callable(v)
-                }
-            except Exception:
-                pass
-
-        # Fall back to string representation for unknown types
-        try:
-            # Test if it's JSON serializable
-            json.dumps(obj)
-            return obj
-        except (TypeError, ValueError):
-            return str(obj)
-
     def _initialize_pipeline(self) -> None:
         """
         Initialize the PaddleOCR-VL pipeline.
@@ -134,7 +78,7 @@ class PaddleOCRVLService:
             image_path: Path to the image file
 
         Returns:
-            List of raw PaddleOCR-VL results as dictionaries (using to_dict())
+            List of raw PaddleOCR-VL results as dictionaries (using save_to_json())
 
         Raises:
             RuntimeError: If pipeline initialization or processing fails
@@ -150,21 +94,22 @@ class PaddleOCRVLService:
             # Run PaddleOCR-VL prediction
             output = self._pipeline.predict(image_path)
 
-            # Convert results using the built-in to_dict() method
+            # Convert results using the save_to_json() method
             results = []
             for res in output:
-                # Use the result object's built-in JSON serialization
-                if hasattr(res, 'to_dict') and callable(res.to_dict):
-                    result_json = res.to_dict()
-                else:
-                    # Fallback: try to make the result serializable
-                    # WARNING: This path should not be taken in normal operation
-                    logger.warning(
-                        f"⚠️  Result object missing to_dict() method! "
-                        f"Type: {type(res).__name__}, "
-                        f"Attributes: {[attr for attr in dir(res) if not attr.startswith('_')]}"
-                    )
-                    result_json = self._make_serializable(res)
+                # Create temp file for JSON output
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+                    tmp_path = tmp.name
+
+                # Save result to JSON file (returns None)
+                res.save_to_json(save_path=tmp_path)
+
+                # Read JSON file back
+                with open(tmp_path, 'r') as f:
+                    result_json = json.load(f)
+
+                # Clean up temp file
+                Path(tmp_path).unlink()
 
                 results.append(result_json)
 

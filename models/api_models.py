@@ -9,7 +9,7 @@ from datetime import datetime
 class OCRElement(BaseModel):
     """Represents a single raw PaddleOCR-VL result element.
 
-    This is a flexible container for raw results from PaddleOCR-VL's to_dict() method.
+    This is a flexible container for raw results from PaddleOCR-VL's save_to_json() method.
     The exact structure depends on the PaddleOCR-VL output format.
     """
 
@@ -24,7 +24,7 @@ class OCRResponse(BaseModel):
     success: bool = Field(..., description="Whether the OCR processing was successful")
     message: str = Field(..., description="Status message")
     processing_time: float = Field(..., description="Processing time in seconds")
-    results: List[Dict[str, Any]] = Field(default_factory=list, description="Raw PaddleOCR-VL results from to_dict()")
+    results: List[Dict[str, Any]] = Field(default_factory=list, description="Raw PaddleOCR-VL results from save_to_json()")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
 
     class Config:

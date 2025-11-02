@@ -81,7 +81,7 @@ paddleocr-vl-service/
 │  - NaViT visual encoder (dynamic resolution)   │
 │  - ERNIE-4.5-0.3B language model                │
 │  - Grouped Query Attention (GQA)                │
-│  - Output: Raw JSON results via to_dict()       │
+│  - Output: Raw JSON results via save_to_json()  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -105,7 +105,7 @@ paddleocr-vl-service/
 - Automatic cleanup even on errors
 
 **4. Raw Result Passthrough**
-- Results use PaddleOCR-VL's built-in `to_dict()` method
+- Results use PaddleOCR-VL's built-in `save_to_json()` method
 - No custom parsing or transformation
 - Preserves all original data from the model
 
@@ -176,7 +176,7 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 }
 ```
 
-**Note:** The `results` field contains raw output from PaddleOCR-VL's `to_dict()` method. The exact structure depends on the document content and may include fields like:
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. The exact structure depends on the document content and may include fields like:
 - `type`: Element type (text, table, chart, formula, etc.)
 - `bbox`: Bounding box coordinates [x1, y1, x2, y2]
 - `content`: Extracted text or structured data
