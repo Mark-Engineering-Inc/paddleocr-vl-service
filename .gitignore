@@ -81,3 +81,6 @@ Thumbs.db
 # EC2 keys
 *.pem
 *.key
+
+# PaddlePaddle wheel files (large, ~1.8GB)
+*.whl
