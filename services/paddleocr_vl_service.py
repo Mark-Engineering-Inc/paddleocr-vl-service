@@ -46,12 +46,22 @@ class PaddleOCRVLService:
         Convert any object to JSON-serializable format.
         Handles nested structures, filters out methods, and converts complex types.
 
+        WARNING: This method should NOT be called in normal operation.
+        It exists only as a fallback for objects without to_dict() support.
+        If you see this warning, the PaddleOCR-VL result object structure may have changed.
+
         Args:
             obj: Any Python object
 
         Returns:
             JSON-serializable version of the object
         """
+        logger.warning(
+            "⚠️  _make_serializable() called - this is unexpected! "
+            "PaddleOCR-VL results should have to_dict() method. "
+            f"Object type: {type(obj).__name__}"
+        )
+
         # Handle None, primitives (str, int, float, bool)
         if obj is None or isinstance(obj, (str, int, float, bool)):
             return obj
@@ -148,6 +158,12 @@ class PaddleOCRVLService:
                     result_json = res.to_dict()
                 else:
                     # Fallback: try to make the result serializable
+                    # WARNING: This path should not be taken in normal operation
+                    logger.warning(
+                        f"⚠️  Result object missing to_dict() method! "
+                        f"Type: {type(res).__name__}, "
+                        f"Attributes: {[attr for attr in dir(res) if not attr.startswith('_')]}"
+                    )
                     result_json = self._make_serializable(res)
 
                 results.append(result_json)
