@@ -124,7 +124,7 @@ class PaddleOCRVLService:
             image_path: Path to the image file
 
         Returns:
-            List of raw PaddleOCR-VL results as dictionaries (using save_to_json())
+            List of raw PaddleOCR-VL results as dictionaries (using to_dict())
 
         Raises:
             RuntimeError: If pipeline initialization or processing fails
@@ -140,12 +140,12 @@ class PaddleOCRVLService:
             # Run PaddleOCR-VL prediction
             output = self._pipeline.predict(image_path)
 
-            # Convert results using the built-in save_to_json() method
+            # Convert results using the built-in to_dict() method
             results = []
             for res in output:
                 # Use the result object's built-in JSON serialization
-                if hasattr(res, 'save_to_json') and callable(res.save_to_json):
-                    result_json = res.save_to_json()
+                if hasattr(res, 'to_dict') and callable(res.to_dict):
+                    result_json = res.to_dict()
                 else:
                     # Fallback: try to make the result serializable
                     result_json = self._make_serializable(res)
