@@ -10,7 +10,9 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) and de
 - **Framework**: FastAPI (Python 3.10)
 - **OCR Engine**: PaddleOCR-VL 0.9B (NaViT + ERNIE-4.5)
 - **GPU**: NVIDIA L4 (CUDA 12.4)
-- **Deployment**: Docker + docker-compose (image size: ~6.5GB optimized with pre-packaged models)
+- **Deployment**: Docker + docker-compose with multi-stage builds
+- **Build Optimization**: Local PaddlePaddle wheel (1.8GB) to avoid slow China CDN
+- **Model Loading**: Lazy loading on first request with volume persistence
 - **Target**: AWS EC2 g6.xlarge (us-west-2)
 
 ## Project Structure
@@ -91,9 +93,10 @@ paddleocr-vl-service/
 - Reduces memory footprint and startup time
 
 **2. Lazy Loading**
-- Pipeline initializes on first API request, not startup
-- Improves container startup time (critical for health checks)
-- Model download (~2GB) happens automatically on first use
+- Pipeline initializes on first API request, not during container startup
+- Improves container startup time (~5 seconds for health checks)
+- Model download (~2GB) happens automatically on first API request (~1-2 seconds)
+- Models persist in Docker volume across container restarts
 
 **3. Temporary File Handling**
 - API receives bytes → write to temp file → process → delete

@@ -21,12 +21,23 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 
 ### Deploy with Docker Compose
 
+**Prerequisites:**
+- Download PaddlePaddle GPU wheel file (1.8GB) to project root:
+  ```bash
+  curl -o paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl \
+    https://paddle-whl.bj.bcebos.com/stable/cu126/paddlepaddle-gpu/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl
+  ```
+
+**Build and Deploy:**
 ```bash
 # Clone repository
 git clone <repository-url>
 cd paddleocr-vl-service
 
-# Build and run (first build takes 5-10 minutes to download models)
+# Build Docker image (requires local wheel file)
+docker-compose build
+
+# Start service
 docker-compose up -d
 
 # Check status
@@ -35,7 +46,10 @@ curl http://localhost:8000/health
 
 The service will be available at `http://localhost:8000`
 
-**Note:** Models (~2GB) are pre-downloaded during Docker build, resulting in a ~6.5GB optimized image size but faster startup times.
+**Important Notes:**
+- **Local wheel file required**: The 1.8GB PaddlePaddle wheel must be in the project root before building to avoid 60+ minute downloads from China CDN
+- **Lazy model loading**: OCR models (~2GB) download automatically on first API request (~1-2 seconds)
+- **Persistent models**: Models are stored in Docker volume and persist across container restarts
 
 ## API Documentation
 
@@ -150,8 +164,9 @@ Access Swagger UI at: `http://localhost:8000/api/v1/docs`
 **Key Components:**
 - **FastAPI**: Web framework with async support
 - **PaddleOCR-VL**: Vision-language OCR model (0.9B parameters)
-- **Pre-packaged Models**: Models embedded in Docker image for instant availability
+- **Lazy Model Loading**: Models download on first API request and persist in volume
 - **Thread-Safe**: Singleton pattern for pipeline management
+- **Local Wheel Optimization**: PaddlePaddle installed from local file to avoid slow CDN downloads
 
 ## Configuration
 
@@ -179,9 +194,10 @@ LOG_FORMAT=json
 **Hardware:** g6.xlarge (NVIDIA L4, 4 vCPUs, 16GB RAM)
 
 **Typical Processing Times:**
-- Simple document (1 page, text only): 3-5 seconds
-- Complex document (tables, charts): 5-10 seconds
-- First request (model initialization): 5-10 seconds (models pre-packaged in image)
+- Container startup: ~5 seconds
+- First API request: ~1-2 seconds (lazy model loading from volume)
+- Simple document (1 page, text only): 1-2 seconds
+- Complex document (tables, charts): 2-5 seconds
 
 **GPU Memory Usage:**
 - Model size: ~2GB VRAM
@@ -213,18 +229,36 @@ nvidia-smi -l 1
 
 ## Troubleshooting
 
-### Docker Build Fails
+### Docker Build Fails - Missing Wheel File
 
-**Problem:** Build fails during model download step
+**Problem:** Build fails with "paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl: not found"
 
-**Solution:** Ensure network connectivity to PaddlePaddle servers during build:
+**Solution:** Download the PaddlePaddle GPU wheel file to project root:
 ```bash
-# Test connection
-curl -I https://paddlepaddle.org.cn
-curl -I https://paddle-whl.bj.bcebos.com
+curl -o paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl \
+  https://paddle-whl.bj.bcebos.com/stable/cu126/paddlepaddle-gpu/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl
+
+# Verify file exists (should be ~1.8GB)
+ls -lh paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl
 
 # Retry build
-docker-compose build --no-cache
+docker-compose build
+```
+
+### Disk Space Issues
+
+**Problem:** Build fails with "no space left on device"
+
+**Solution:** Free up Docker disk space:
+```bash
+# Check Docker disk usage
+docker system df
+
+# Clean up unused Docker resources
+docker system prune -af --volumes
+
+# Verify available space (recommend 50GB+)
+df -h
 ```
 
 ### GPU Not Detected
