@@ -39,7 +39,7 @@ async def extract_document(
     - Tables, charts, formulas
 
     Returns:
-    - Raw PaddleOCR-VL results from save_to_json()
+    - Raw PaddleOCR-VL results from to_dict()
     - Processing metadata
     """
     start_time = time.time()

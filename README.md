@@ -4,11 +4,9 @@ A GPU-accelerated document OCR service built with FastAPI and PaddleOCR-VL. Extr
 
 ## Features
 
-- **Multilingual OCR**: Supports 109 languages including EN, ZH, ES, FR, DE, JP, AR, Hindi, Thai, and more
-- **Comprehensive Parsing**: Extracts text, tables, formulas, and charts
 - **GPU Accelerated**: Optimized for NVIDIA L4 GPU (g6.xlarge)
 - **RESTful API**: Simple HTTP multipart file upload
-- **Raw Results**: Direct output from PaddleOCR-VL's save_to_json() method
+- **Raw Results**: Direct output from PaddleOCR-VL's to_dict() method
 - **Production Ready**: Docker deployment with health checks
 
 ## Quick Start
@@ -118,7 +116,7 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 }
 ```
 
-**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. Structure varies based on document content and element types (text, table, chart, formula).
+**Note:** The `results` field contains raw output from PaddleOCR-VL's `to_dict()` method. Structure varies based on document content and element types (text, table, chart, formula).
 
 ### Example: Process from Local Machine to Remote Server
 

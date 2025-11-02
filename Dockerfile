@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     build-essential \
+    ccache \
     wget \
     curl \
     ca-certificates \
@@ -55,7 +56,9 @@ RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 # Install PaddlePaddle GPU 3.2.0 from local wheel file
 # Why local wheel: Avoids 60+ minute download from China CDN (paddle-whl.bj.bcebos.com)
 # Note: This must be installed BEFORE PaddleOCR to ensure correct dependencies
-COPY /tmp/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl /tmp/
+# Prerequisite: Copy the wheel file to the project directory first:
+#   cp /tmp/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl .
+COPY paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl /tmp/
 RUN python -m pip install --no-cache-dir /tmp/paddlepaddle_gpu-3.2.0-cp310-cp310-linux_x86_64.whl
 
 # Install PaddleOCR with doc-parser support (includes PaddleOCR-VL)
