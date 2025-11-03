@@ -342,24 +342,31 @@ test_ocr_api() {
 
     log "Testing OCR API..."
 
-    # Create temporary test image if none provided
+    # Use repository test image if none provided
     if [[ -z "$TEST_IMAGE" ]]; then
-        log "Creating temporary test image..."
-        TEST_IMAGE="/tmp/test-ocr-$$.png"
+        REPO_TEST_IMAGE="$PROJECT_ROOT/test-data/sample-document.jpg"
 
-        # Create a simple test image with text using ImageMagick (if available)
-        if command -v convert &> /dev/null; then
-            convert -size 400x100 xc:white \
-                -pointsize 24 -fill black \
-                -annotate +10+40 "PaddleOCR-VL Test" \
-                -annotate +10+70 "$(date '+%Y-%m-%d %H:%M:%S')" \
-                "$TEST_IMAGE"
-            log "Test image created: $TEST_IMAGE"
+        if [[ -f "$REPO_TEST_IMAGE" ]]; then
+            TEST_IMAGE="$REPO_TEST_IMAGE"
+            log "Using repository test image: $TEST_IMAGE"
         else
-            log_warning "ImageMagick not found, skipping API test"
-            log_warning "Install ImageMagick or provide --test-image to test OCR"
-            TEST_API="skip"
-            return 0
+            log "Creating temporary test image..."
+            TEST_IMAGE="/tmp/test-ocr-$$.png"
+
+            # Create a simple test image with text using ImageMagick (if available)
+            if command -v convert &> /dev/null; then
+                convert -size 400x100 xc:white \
+                    -pointsize 24 -fill black \
+                    -annotate +10+40 "PaddleOCR-VL Test" \
+                    -annotate +10+70 "$(date '+%Y-%m-%d %H:%M:%S')" \
+                    "$TEST_IMAGE"
+                log "Test image created: $TEST_IMAGE"
+            else
+                log_warning "ImageMagick not found and no test image available"
+                log_warning "Install ImageMagick or provide --test-image to test OCR"
+                TEST_API="skip"
+                return 0
+            fi
         fi
     fi
 
