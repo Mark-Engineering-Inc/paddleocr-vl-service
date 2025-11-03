@@ -20,26 +20,19 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) and de
 ```
 paddleocr-vl-service/
 ├── config/                         # Application configuration
-│   ├── __init__.py
 │   ├── settings.py                # Pydantic settings (env vars)
 │   └── logging_config.py          # Logging setup
 ├── services/                       # Business logic layer
-│   ├── __init__.py
 │   └── paddleocr_vl_service.py    # PaddleOCR-VL wrapper (singleton)
 ├── models/                         # Pydantic data models
-│   ├── __init__.py
 │   └── api_models.py              # Request/response schemas
 ├── routers/                        # API endpoints
-│   ├── __init__.py
 │   └── ocr_router.py              # OCR extraction endpoint
 ├── main.py                         # FastAPI application + lifespan
 ├── requirements.txt                # Python dependencies
 ├── Dockerfile                      # Multi-stage GPU build
 ├── docker-compose.yml              # Docker Compose config
-├── .env.template                   # Environment variables template
-├── .gitignore                      # Git ignore patterns
-├── README.md                       # User-facing documentation
-└── CLAUDE.md                       # This file (technical guide)
+└── .env.template                   # Environment variables template
 ```
 
 ## Architecture
@@ -47,72 +40,14 @@ paddleocr-vl-service/
 ### Service Layers
 
 ```
-┌─────────────────────────────────────────────────┐
-│              Client (HTTP Request)              │
-└──────────────────┬──────────────────────────────┘
-                   │ Multipart file upload
-                   ▼
-┌─────────────────────────────────────────────────┐
-│          FastAPI Application (main.py)          │
-│  - CORS middleware                              │
-│  - Lifespan management                          │
-│  - Global exception handler                     │
-└──────────────────┬──────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────┐
-│         OCR Router (routers/ocr_router.py)      │
-│  - File validation (size, extension)           │
-│  - Multipart file handling                      │
-│  - Response formatting                          │
-└──────────────────┬──────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────┐
-│   PaddleOCR-VL Service (services/...)           │
-│  - Lazy initialization (singleton)              │
-│  - Thread-safe pipeline management              │
-│  - Image bytes → temp file → processing         │
-└──────────────────┬──────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────┐
-│         PaddleOCR-VL Pipeline (GPU)             │
-│  - NaViT visual encoder (dynamic resolution)   │
-│  - ERNIE-4.5-0.3B language model                │
-│  - Grouped Query Attention (GQA)                │
-│  - Output: Raw JSON results via save_to_json()  │
-└─────────────────────────────────────────────────┘
+Client (HTTP) → FastAPI (main.py) → OCR Router → PaddleOCR-VL Service → GPU Pipeline
 ```
 
-### Key Design Patterns
-
-**1. Singleton Pattern** (`paddleocr_vl_service.py`)
-- Ensures only one PaddleOCR-VL pipeline instance
-- Thread-safe initialization with double-checked locking
-- Reduces memory footprint and startup time
-
-**2. Lazy Loading**
-- Pipeline initializes on first API request, not during container startup
-- Improves container startup time (~5 seconds for health checks)
-- Model download (~2GB) happens automatically on first API request (~1-2 seconds)
-- Models persist in Docker volume across container restarts
-- Note: Model pre-download during build is not possible because NVIDIA driver (libcuda.so.1) is unavailable during Docker build, even with runtime image
-
-**3. Temporary File Handling**
-- API receives bytes → write to temp file → process → delete
-- PaddleOCR-VL requires file paths, not in-memory bytes
-- Automatic cleanup even on errors
-
-**4. Raw Result Passthrough**
-- Results use PaddleOCR-VL's built-in `save_to_json()` method
-- No custom parsing or transformation
-- Preserves all original data from the model
-
-**5. Lifespan Management**
-- FastAPI async context manager for startup/shutdown
-- Logs configuration on startup
-- Graceful cleanup on shutdown
+**Key Design Patterns:**
+- **Singleton**: One pipeline instance, thread-safe initialization
+- **Lazy Loading**: Pipeline initializes on first request (libcuda.so.1 unavailable during Docker build)
+- **Temp File Handling**: Bytes → temp file → process → cleanup
+- **Raw Passthrough**: Results use `save_to_json()` with no transformation
 
 ## API Endpoints
 
@@ -120,45 +55,39 @@ paddleocr-vl-service/
 
 **Endpoint:** `GET /health`
 
-**Purpose:** Container health check, monitoring
-
 **Response:**
 ```json
 {
   "status": "healthy",
   "service": "PaddleOCR-VL Service",
   "version": "1.0.0",
-  "gpu_enabled": true,
-  "pipeline_ready": false,  // false until first request
+  "pipeline_ready": false,
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
 
 **Usage:**
 - Docker health check: `curl -f http://localhost:8000/health`
-- Monitoring: Check `pipeline_ready` for model load status
-- GPU verification: Check `gpu_enabled` matches config
+- Monitor `pipeline_ready` for model load status
+
+**Note:** GPU with CUDA is mandatory. Service fails at startup if GPU is unavailable.
 
 ### 2. Extract Document
 
 **Endpoint:** `POST /api/v1/ocr/extract-document`
 
-**Purpose:** OCR processing of images/PDFs
-
 **Request:**
 - Content-Type: `multipart/form-data`
-- Field: `file` (UploadFile)
-- Max size: 50MB (configurable)
-- Allowed extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.tif`, `.pdf`
+- Field: `file` (max 50MB)
+- Extensions: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.tif`, `.pdf`
 
 **Example:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
-  -F "file=@document.jpg" \
-  -H "Accept: application/json"
+  -F "file=@document.jpg"
 ```
 
-**Response:**
+**Response:** (simplified example)
 ```json
 {
   "success": true,
@@ -167,63 +96,43 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
   "results": [
     {
       "input_path": "/tmp/tmpg9eao3jp.jpg",
-      "page_index": null,
-      "model_settings": {
-        "use_doc_preprocessor": false,
-        "use_layout_detection": true,
-        "use_chart_recognition": false,
-        "format_block_content": false
-      },
+      "model_settings": {...},
       "parsing_res_list": [
         {
           "block_label": "text",
-          "block_content": "Extracted document text content...",
+          "block_content": "Extracted text...",
           "block_bbox": [9, 22, 381, 94],
           "block_id": 0,
           "block_order": 1
         }
       ],
       "layout_det_res": {
-        "input_path": null,
-        "page_index": null,
         "boxes": [
           {
-            "cls_id": 22,
             "label": "text",
-            "score": 0.7198508381843567,
+            "score": 0.72,
             "coordinate": [9.689, 22.654, 381.0, 94.012]
           }
         ]
       }
     }
-  ],
-  "timestamp": "2025-11-02T05:04:42.465560"
+  ]
 }
 ```
 
-**Note:** The `results` field contains raw output from PaddleOCR-VL's `save_to_json()` method. The exact structure depends on the document content and includes:
-- `parsing_res_list[]`: Array of extracted content blocks
-  - `block_label`: Element type (text, table, chart, formula, etc.)
-  - `block_bbox`: Bounding box coordinates [x1, y1, x2, y2]
-  - `block_content`: Extracted text or structured data
-  - `block_id`, `block_order`: Block identification and ordering
-- `layout_det_res.boxes[]`: Layout detection results
-  - `label`: Detected element type
-  - `score`: OCR confidence score (0-1)
-  - `coordinate`: Precise bounding box coordinates
-- `model_settings`: Processing configuration used
-- Additional fields depending on element type and processing options
+**Note:** `results` contains raw PaddleOCR-VL output via `save_to_json()`. Structure includes:
+- `parsing_res_list[]`: Extracted content blocks (text/table/chart/formula)
+- `layout_det_res.boxes[]`: Layout detection with confidence scores
+- Additional fields vary by document type
 
 **Error Responses:**
-- `400 Bad Request`: Invalid file format or empty file
-- `413 Request Entity Too Large`: File exceeds 50MB
-- `500 Internal Server Error`: Processing error (see logs)
+- `400`: Invalid file format or empty
+- `413`: File exceeds 50MB
+- `500`: Processing error (check logs)
 
 ## Configuration
 
 ### Environment Variables
-
-All settings in `config/settings.py` can be overridden via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -231,31 +140,19 @@ All settings in `config/settings.py` can be overridden via environment variables
 | `APP_VERSION` | 1.0.0 | Service version |
 | `APP_PORT` | 8000 | HTTP port |
 | `APP_HOST` | 0.0.0.0 | Bind address |
-| `DEBUG` | false | Debug mode (enables reload) |
-| `USE_GPU` | true | Enable GPU acceleration |
-| `DEVICE` | gpu | Device type (gpu/cpu) |
+| `DEBUG` | false | Debug mode |
 | `MAX_UPLOAD_SIZE` | 52428800 | Max file size (50MB) |
-| `MAX_CONCURRENT_REQUESTS` | 3 | Limit concurrent processing |
+| `MAX_CONCURRENT_REQUESTS` | 3 | Concurrent limit |
 | `LOG_LEVEL` | INFO | Logging level |
-| `LOG_FORMAT` | json | Log format (json/text) |
+| `LOG_FORMAT` | json | json/text |
+
+**Note:** GPU with CUDA is mandatory - no configuration option to disable.
 
 ### Logging
 
-**Structured JSON Logs** (default):
-```json
-{"timestamp": "2025-01-15 10:30:00", "level": "INFO", "logger": "main", "message": "Starting up"}
-```
+**Default:** JSON format `{"timestamp": "...", "level": "INFO", "logger": "main", "message": "..."}`
 
-**Text Logs** (for development):
-```
-2025-01-15 10:30:00 - main - INFO - Starting up
-```
-
-**Suppressed Loggers:**
-- `paddleocr`: Set to WARNING (very verbose)
-- `ppocr`: Set to WARNING
-- `PIL`: Set to WARNING
-- `urllib3`: Set to WARNING
+**Suppressed:** `paddleocr`, `ppocr`, `PIL`, `urllib3` set to WARNING (verbose)
 
 ## Deployment
 
@@ -264,9 +161,8 @@ All settings in `config/settings.py` can be overridden via environment variables
 **AWS EC2 g6.xlarge Instance:**
 - Region: us-west-2
 - GPU: NVIDIA L4 (24GB VRAM)
-- vCPUs: 4
-- RAM: 16GB
-- Storage: 100GB gp3 EBS
+- vCPUs: 4, RAM: 16GB
+- Storage: Instance Store (250GB NVMe SSD)
 - AMI: Ubuntu 22.04 with CUDA 12.4+
 
 **Required Software:**
@@ -276,55 +172,26 @@ All settings in `config/settings.py` can be overridden via environment variables
 
 ### Step 1: Create EC2 Instance
 
+**Checklist:**
+1. Create key pair: `aws ec2 create-key-pair --region us-west-2 --key-name paddleocr-vl-key`
+2. Create security group: Allow SSH (port 22) from your IP, HTTP (port 8000) publicly
+3. Launch g6.xlarge instance with Ubuntu 22.04 Deep Learning AMI (CUDA included)
+
+**Launch command:**
 ```bash
-# Create key pair
-aws ec2 create-key-pair \
-  --region us-west-2 \
-  --key-name paddleocr-vl-key \
-  --query 'KeyMaterial' \
-  --output text > paddleocr-vl-key.pem
-
-chmod 400 paddleocr-vl-key.pem
-
-# Create security group
-aws ec2 create-security-group \
-  --region us-west-2 \
-  --group-name paddleocr-vl-sg \
-  --description "Security group for PaddleOCR-VL service"
-
-# Allow SSH from your IP
-aws ec2 authorize-security-group-ingress \
-  --region us-west-2 \
-  --group-name paddleocr-vl-sg \
-  --protocol tcp \
-  --port 22 \
-  --cidr <YOUR_IP>/32
-
-# Allow HTTP on port 8000
-aws ec2 authorize-security-group-ingress \
-  --region us-west-2 \
-  --group-name paddleocr-vl-sg \
-  --protocol tcp \
-  --port 8000 \
-  --cidr 0.0.0.0/0
-
-# Launch instance (Ubuntu 22.04 Deep Learning AMI with CUDA)
 aws ec2 run-instances \
   --region us-west-2 \
-  --image-id ami-0xyz... \  # Ubuntu 22.04 CUDA AMI
+  --image-id ami-0xyz... \
   --instance-type g6.xlarge \
   --key-name paddleocr-vl-key \
-  --security-groups paddleocr-vl-sg \
-  --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=100,VolumeType=gp3}'
+  --security-groups paddleocr-vl-sg
 ```
 
 ### Step 2: Configure Instance
 
 ```bash
-# SSH into instance
+# SSH and update
 ssh -i paddleocr-vl-key.pem ubuntu@<PUBLIC_IP>
-
-# Update system
 sudo apt-get update && sudo apt-get upgrade -y
 
 # Install Docker
@@ -337,12 +204,10 @@ distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
 curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
   sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 
-# Verify GPU access
+# Verify
 nvidia-smi
 docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 ```
@@ -350,284 +215,145 @@ docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
 ### Step 3: Deploy Service
 
 ```bash
-# Clone repository
-git clone <repository-url>
-cd paddleocr-vl-service
-
-# Create .env file (optional, uses defaults)
-cp .env.template .env
-
-# Build and run (build includes model download, may take 5-10 minutes)
+git clone <repository-url> && cd paddleocr-vl-service
+cp .env.template .env  # Optional
 docker-compose up -d
-
-# Check logs
 docker-compose logs -f
-
-# Verify service
 curl http://localhost:8000/health
 ```
 
 ### Step 4: Test from Local Machine
 
 ```bash
-# Test health check
+# Health check
 curl http://<EC2_PUBLIC_IP>:8000/health
 
-# Test OCR extraction
+# OCR extraction
 curl -X POST http://<EC2_PUBLIC_IP>:8000/api/v1/ocr/extract-document \
-  -F "file=@/Users/zhangshengjie/Downloads/scan_samples_en/scan_samples_en_63.jpg" \
-  -o result.json
+  -F "file=@document.jpg" -o result.json
 
-# View results - extract text blocks
-cat result.json | jq '.results[].parsing_res_list[] | {block_label, block_content}'
-
-# Extract all text content only
+# Parse results with jq
 cat result.json | jq -r '.results[].parsing_res_list[].block_content'
-
-# View layout detection scores
-cat result.json | jq '.results[].layout_det_res.boxes[] | {label, score}'
 ```
 
 ## Performance Tuning
 
 ### GPU Memory Management
 
-**Monitoring:**
-```bash
-# Real-time GPU monitoring
-nvidia-smi -l 1
-
-# Inside container
-docker exec paddleocr-vl-service nvidia-smi
-```
+**Monitor:** `nvidia-smi -l 1` or `docker exec paddleocr-vl-service nvidia-smi`
 
 **Expected Usage:**
-- Idle: ~100MB (minimal baseline)
-- Model loaded: ~2GB (PaddleOCR-VL 0.9B)
-- Processing: ~4-6GB (depends on image size)
+- Idle: ~100MB
+- Loaded: ~2GB (model)
+- Processing: ~4-6GB (varies by image)
 
-**Optimization:**
-- Set `MAX_CONCURRENT_REQUESTS=1` for large documents
-- Use smaller images when possible (resize client-side)
-- Monitor with `nvidia-smi` during load testing
+**Optimize:** Set `MAX_CONCURRENT_REQUESTS=1` for large docs, resize images client-side
 
-### Startup Time Optimization
+### Startup Times
 
-**Cold Start (first request):**
-- Container startup: ~5s
-- Model initialization: ~5-10s (models pre-packaged in image)
-- **Total:** ~5-10s
+**Cold start:** Container (~5s) + model init (~5-10s) = **10-15s total**
+- Models pre-downloaded during Docker build (~2GB embedded in image)
 
-**Note:** Models are now **pre-downloaded during Docker build** and embedded in the image (~2GB). This eliminates the 10-15 second download delay that previously occurred on first API request.
-
-**Warm Start (subsequent requests):**
-- Processing only: ~3-10s (depends on document complexity)
+**Warm start:** ~3-10s (processing only)
 
 ## Troubleshooting
 
-### Issue: Docker Build Fails (Model Download)
+### Docker Build Fails (Model Download)
 
-**Symptoms:**
-- Docker build fails during model download step
-- Error: "Model directory not created" or "Model directory is empty"
+**Symptoms:** Build fails during model download
 
 **Solutions:**
-1. Check internet connectivity during build:
-   ```bash
-   # Test connection to PaddlePaddle servers
-   curl -I https://paddlepaddle.org.cn
-   curl -I https://paddle-whl.bj.bcebos.com
-   ```
+- Test connectivity: `curl -I https://paddle-whl.bj.bcebos.com`
+- Check disk space: ~7GB needed (3GB build + 4GB image)
 
-2. Increase Docker build timeout (if needed):
-   ```bash
-   # Build with extended timeout
-   DOCKER_BUILDKIT=1 docker-compose build --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
-   ```
+### GPU Not Detected (Fatal Error)
 
-3. Verify sufficient disk space for build and image (~7GB total: ~3GB build artifacts + ~4GB final image)
+**Symptoms:** Service fails to start with "GPU is mandatory" error
 
-### Issue: GPU Not Detected
+**Solution:** GPU with CUDA is required. Service cannot run without it.
+- Verify GPU: `nvidia-smi`
+- Test Docker GPU: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`
+- Check `docker-compose.yml` has GPU config under `deploy.resources.reservations.devices`
+- Ensure NVIDIA Container Toolkit is installed
 
-**Symptoms:**
-- `gpu_enabled: false` in health check
-- Logs show "GPU not available, using CPU"
+### CUDA Out of Memory
+
+**Symptoms:** "CUDA out of memory" error
 
 **Solutions:**
-1. Verify NVIDIA Container Toolkit:
-   ```bash
-   docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
-   ```
+- Set `MAX_CONCURRENT_REQUESTS=1` in `.env`
+- Check other GPU processes: `nvidia-smi`
+- Upgrade to g6.2xlarge (48GB VRAM)
 
-2. Check docker-compose GPU configuration:
-   ```yaml
-   deploy:
-     resources:
-       reservations:
-         devices:
-           - driver: nvidia
-             count: all
-             capabilities: [gpu]
-   ```
+### safetensors Import Error
 
-3. Restart Docker daemon:
-   ```bash
-   sudo systemctl restart docker
-   ```
+**Symptoms:** "safetensors does not support PaddlePaddle"
 
-### Issue: CUDA Out of Memory (OOM)
-
-**Symptoms:**
-- Processing fails with "CUDA out of memory"
-- `nvidia-smi` shows 100% memory usage
-
-**Solutions:**
-1. Reduce concurrent requests:
-   ```bash
-   # In .env
-   MAX_CONCURRENT_REQUESTS=1
-   ```
-
-2. Check for other GPU processes:
-   ```bash
-   nvidia-smi  # Look for other processes using GPU
-   ```
-
-3. Increase GPU size (upgrade to g6.2xlarge with 48GB VRAM)
-
-### Issue: safetensors Import Error
-
-**Symptoms:**
-- Startup fails with "safetensors module not found"
-- Or: "safetensors does not support PaddlePaddle"
-
-**Solutions:**
-This should not occur with the provided Dockerfile, but if it does:
-
+**Solution:**
 ```bash
-# Install PaddlePaddle-compatible safetensors
 docker exec paddleocr-vl-service pip install \
   https://paddle-whl.bj.bcebos.com/nightly/cu126/safetensors/safetensors-0.6.2.dev0-cp38-abi3-linux_x86_64.whl \
   --force-reinstall
 ```
+**Cause:** Standard `safetensors` lacks PaddlePaddle support; must use custom wheel.
 
-**Root cause:** Standard `safetensors` package doesn't support PaddlePaddle tensors. Must use custom wheel.
+### Processing Timeout
 
-### Issue: Processing Times Out
-
-**Symptoms:**
-- Request hangs for >60 seconds
-- No response from server
+**Symptoms:** Request hangs >60s
 
 **Solutions:**
-1. Increase client timeout:
-   ```bash
-   curl --max-time 120 -X POST http://...
-   ```
+- Increase timeout: `curl --max-time 120 ...`
+- Check model download: `docker-compose logs -f`
+- Verify resources: `top` and `free -h`
 
-2. Check if model is still downloading (first request):
-   ```bash
-   docker-compose logs -f  # Watch for download progress
-   ```
-
-3. Verify instance has enough CPU/RAM:
-   ```bash
-   top  # Check CPU usage
-   free -h  # Check memory usage
-   ```
-
-### Issue: File Upload Fails (413)
-
-**Symptoms:**
-- `413 Request Entity Too Large`
+### File Upload 413 Error
 
 **Solutions:**
-1. Check file size:
-   ```bash
-   ls -lh your-file.jpg  # Must be <50MB
-   ```
-
-2. Increase limit (in .env):
-   ```bash
-   MAX_UPLOAD_SIZE=104857600  # 100MB
-   ```
-
-3. Compress image before upload (client-side optimization)
+- Check size: `ls -lh file.jpg` (<50MB)
+- Increase: `MAX_UPLOAD_SIZE=104857600` in `.env`
 
 ## Development Workflow
 
-### Local Testing (Platform Limitations)
+### Platform Limitations
 
-**⚠️ CRITICAL PLATFORM REQUIREMENTS:**
+**⚠️ PRODUCTION TARGET:** Linux x86_64 + NVIDIA GPU only
 
-This service is designed for **Linux x86_64 with NVIDIA GPU only**. Local testing without the target platform has significant limitations:
+| Platform | Status | Note |
+|----------|--------|------|
+| Linux x86_64 + NVIDIA GPU | ✅ Full support | Production |
+| Linux x86_64 (CPU) | ⚠️ Untested | Dev only |
+| macOS ARM64 (M1/M2/M3) | ❌ NOT SUPPORTED | No ARM64 safetensors wheel |
+| macOS x86_64 | ❌ NOT SUPPORTED | |
+| Windows | ⚠️ Untested | |
 
-#### Supported Platforms
+**macOS Incompatibility:** PaddlePaddle-compatible `safetensors` wheel (`safetensors-0.6.2-cp38-abi3-linux_x86_64.whl`) only exists for Linux x86_64. Standard PyPI `safetensors` doesn't support PaddlePaddle framework.
 
-| Platform | PaddlePaddle | PaddleOCR | PaddleOCR-VL | Status |
-|----------|--------------|-----------|--------------|---------|
-| **Linux x86_64 + NVIDIA GPU** | ✅ 3.2.0 GPU | ✅ 3.3.0+ | ✅ Full support | **PRODUCTION** |
-| **Linux x86_64 (CPU only)** | ✅ 3.2.0 CPU | ✅ 3.3.0+ | ⚠️ Untested | Development only |
-| **macOS ARM64 (M1/M2/M3)** | ✅ 3.2.1 CPU | ✅ 3.3.0+ | ❌ **NOT SUPPORTED** | **INCOMPATIBLE** |
-| **macOS x86_64 (Intel)** | ✅ CPU only | ✅ 3.3.0+ | ❌ **NOT SUPPORTED** | **INCOMPATIBLE** |
-| **Windows** | ✅ CPU/GPU | ✅ 3.3.0+ | ⚠️ Untested | Not recommended |
+### Adding Features
 
-#### Why macOS (M1/M2/M3) is NOT Compatible
+**New endpoint:** Add to `routers/ocr_router.py` + models in `models/api_models.py` + include in `main.py`
 
-**Blocking Issue:** PaddlePaddle-compatible `safetensors` wheel does not exist for ARM64 macOS.
+**Config changes:** Update `config/settings.py` + `.env.template` + docs
 
-**Technical Details:**
-1. ✅ PaddlePaddle 3.2.1 CPU **installs successfully** on ARM64 macOS
-2. ✅ PaddleOCR 3.3.0+ with doc-parser **installs successfully**
-3. ❌ PaddleOCR-VL **initialization fails** with:
-   ```
-   safetensors_rust.SafetensorError: framework paddle is invalid
-   ```
-
-**Root Cause:**
-- PaddleOCR-VL requires PaddlePaddle-specific `safetensors` (custom wheel)
-- This wheel is only available as: `safetensors-0.6.2-cp38-abi3-linux_x86_64.whl`
-- Standard PyPI `safetensors` doesn't support PaddlePaddle framework
-- No ARM64 macOS build exists
-
-### Adding New Features
-
-**1. New API endpoint:**
-- Add route in `routers/ocr_router.py`
-- Add Pydantic models in `models/api_models.py`
-- Update `main.py` to include router
-- Update OpenAPI docs (automatic)
-
-**2. Configuration changes:**
-- Add setting in `config/settings.py`
-- Update `.env.template`
-- Document in `README.md` and this file
-
-**3. Service logic:**
-- Extend `services/paddleocr_vl_service.py`
-- Maintain singleton pattern
-- Add error handling
+**Service logic:** Extend `services/paddleocr_vl_service.py` (maintain singleton)
 
 ### Testing Checklist
 
-Before committing:
-- [ ] Test health endpoint: `curl http://localhost:8000/health`
-- [ ] Test OCR with sample image
-- [ ] Check logs for errors: `docker-compose logs`
-- [ ] Verify GPU usage: `nvidia-smi`
-- [ ] Test error cases (invalid file, too large, etc.)
-- [ ] Update documentation if API changes
+- [ ] `curl http://localhost:8000/health`
+- [ ] OCR test with sample image
+- [ ] Check logs: `docker-compose logs`
+- [ ] GPU usage: `nvidia-smi`
+- [ ] Error cases (invalid file, oversized, etc.)
+- [ ] Update docs if API changes
 
 ## Critical Dependencies
 
-### PaddlePaddle GPU Installation Order
+### Installation Order (⚠️ CRITICAL)
 
-**⚠️ CRITICAL:** Must install in this exact order (Dockerfile handles this):
+**Must install in this exact order:**
 
-1. **PaddlePaddle GPU 3.2.0** (CUDA 12.6 compatible)
+1. **PaddlePaddle GPU 3.2.0** (CUDA 12.6)
    ```bash
-   pip install paddlepaddle-gpu==3.2.0 \
-     -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+   pip install paddlepaddle-gpu==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
    ```
 
 2. **PaddleOCR with doc-parser**
@@ -635,119 +361,61 @@ Before committing:
    pip install "paddleocr[doc-parser]>=3.3.0"
    ```
 
-3. **PaddlePaddle-compatible safetensors** (custom wheel)
+3. **PaddlePaddle-compatible safetensors**
    ```bash
-   pip install \
-     https://paddle-whl.bj.bcebos.com/nightly/cu126/safetensors/safetensors-0.6.2.dev0-cp38-abi3-linux_x86_64.whl \
-     --force-reinstall
+   pip install https://paddle-whl.bj.bcebos.com/nightly/cu126/safetensors/safetensors-0.6.2.dev0-cp38-abi3-linux_x86_64.whl --force-reinstall
    ```
 
-**Why this order matters:**
-- PaddleOCR depends on PaddlePaddle
-- safetensors must be PaddlePaddle-compatible version
-- Wrong order causes import errors or missing GPU support
+**Why:** PaddleOCR depends on PaddlePaddle; safetensors must be compatible version. Wrong order → import errors.
 
-### System Libraries (Ubuntu 22.04)
+### System Libraries
 
-Required for PaddleOCR and image processing:
-```
-libglib2.0-0, libsm6, libxext6, libxrender1, libgomp1, libgl1-mesa-glx
-```
+Ubuntu 22.04 packages: `libglib2.0-0 libsm6 libxext6 libxrender1 libgomp1 libgl1-mesa-glx`
 
 ## Model Information
 
-### PaddleOCR-VL 0.9B
-
-**Architecture:**
-- Visual Encoder: NaViT-style dynamic resolution
-- Language Model: ERNIE-4.5-0.3B
-- Total Parameters: 0.9B
-- Attention: Grouped Query Attention (16 heads, 2 KV heads)
-
-**Capabilities:**
-- **Text**: 109 languages (multilingual)
-- **Tables**: Structure preservation, cell extraction
-- **Formulas**: LaTeX output
-- **Charts**: Data extraction from graphs
-
-**Model Files:**
-- Location: `/home/appuser/.paddleocr/models/`
-- Size: ~2GB total
-- Download: Automatic on first use
-- Format: PaddlePaddle checkpoint + safetensors
-
-**Performance:**
-- SOTA vs pipeline-based solutions
-- Competitive with 72B VLMs on DocVQA benchmarks
-- Optimized for batch size = 1 (local inference)
+**PaddleOCR-VL 0.9B:**
+- Architecture: NaViT visual encoder + ERNIE-4.5-0.3B
+- Capabilities: 109 languages, tables, formulas (LaTeX), charts
+- Location: `/home/appuser/.paddleocr/models/` (~2GB)
+- Performance: SOTA vs pipeline methods, competitive with 72B VLMs
 
 ## Monitoring
 
 ### Health Check Integration
 
-For production monitoring, use the health endpoint:
-
 ```bash
-# Prometheus-style check
 curl -f http://localhost:8000/health || echo "unhealthy"
-
-# JSON parsing for monitoring
 curl -s http://localhost:8000/health | jq -r '.status'
 ```
 
-### Metrics to Monitor
+### Key Metrics
 
-1. **Health Status**: `/health` returns 200 OK
-2. **GPU Availability**: `.gpu_enabled == true`
-3. **Pipeline Ready**: `.pipeline_ready == true` (after first request)
-4. **Response Time**: `processing_time` field in API responses
-5. **Error Rate**: Monitor 4xx/5xx responses
-6. **GPU Memory**: `nvidia-smi --query-gpu=memory.used --format=csv`
-7. **Container Status**: `docker ps | grep paddleocr-vl`
+1. Health: `/health` returns 200
+2. Pipeline ready: `.pipeline_ready == true`
+3. Response time: `processing_time` field
+4. Error rate: 4xx/5xx counts
+5. GPU memory: `nvidia-smi --query-gpu=memory.used`
+6. Container status: `docker ps | grep paddleocr-vl`
 
 ## Security Considerations
 
-### File Upload Security
+**File Upload:**
+- ✅ Extension whitelist, size limits, temp cleanup, non-root user
+- 💡 Add: Magic byte validation, rate limiting, filename sanitization, VPC isolation
 
-**Implemented:**
-- File extension validation (whitelist)
-- File size limits (50MB default)
-- Temporary file cleanup (automatic)
-- Non-root container user
-
-**Recommended Additional Measures:**
-- File content validation (magic bytes)
-- Rate limiting (nginx/API gateway)
-- Input sanitization for filenames
-- Network isolation (VPC/security groups)
-
-### Container Security
-
-**Current:**
-- Non-root user (`appuser`, UID 1000)
-- Minimal base image (Ubuntu 22.04 runtime only)
-- No unnecessary packages in final image
-- Health checks enabled
-
-**Production Recommendations:**
-- Use read-only root filesystem
-- Drop unnecessary Linux capabilities
-- Scan images for vulnerabilities (Trivy, Snyk)
-- Use secrets management for sensitive configs
+**Container:**
+- ✅ Non-root (`appuser`, UID 1000), minimal image, health checks
+- 💡 Add: Read-only filesystem, drop capabilities, vulnerability scanning, secrets management
 
 ## References
 
-- **PaddleOCR-VL HuggingFace**: https://huggingface.co/PaddlePaddle/PaddleOCR-VL
+- **PaddleOCR-VL**: https://huggingface.co/PaddlePaddle/PaddleOCR-VL
 - **PaddleOCR GitHub**: https://github.com/PaddlePaddle/PaddleOCR
-- **FastAPI Documentation**: https://fastapi.tiangolo.com/
+- **FastAPI**: https://fastapi.tiangolo.com/
 - **NVIDIA Container Toolkit**: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/
 
 ## Changelog
 
 ### v1.0.0 (2025-01-15)
-- Initial release
-- FastAPI application with GPU support
-- Multipart file upload endpoint
-- Docker deployment with docker-compose
-- Health check endpoint
-- JSON and Markdown output formats
+- Initial release with FastAPI, GPU support, multipart upload, Docker deployment, health check

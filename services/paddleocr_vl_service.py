@@ -9,7 +9,6 @@ import time
 import json
 
 from config.logging_config import get_logger
-from config.settings import settings
 
 logger = get_logger(__name__)
 
@@ -64,7 +63,6 @@ class PaddleOCRVLService:
 
                 elapsed = time.time() - start_time
                 logger.info(f"PaddleOCR-VL pipeline initialized successfully in {elapsed:.2f}s")
-                logger.info(f"GPU support: {settings.use_gpu}")
 
             except Exception as e:
                 logger.error(f"Failed to initialize PaddleOCR-VL pipeline: {e}")
@@ -161,9 +159,7 @@ class PaddleOCRVLService:
     def get_status(self) -> Dict[str, Any]:
         """Get service status information."""
         return {
-            "initialized": self.is_ready(),
-            "gpu_enabled": settings.use_gpu,
-            "device": settings.device
+            "initialized": self.is_ready()
         }
 
 
