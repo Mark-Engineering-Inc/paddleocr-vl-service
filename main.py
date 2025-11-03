@@ -37,7 +37,19 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info(f"{settings.app_name} v{settings.app_version} - Starting up")
     logger.info("=" * 80)
-    logger.info(f"GPU Enabled: {settings.use_gpu}")
+
+    # Validate GPU availability (mandatory requirement)
+    try:
+        import paddle
+        if not paddle.device.is_compiled_with_cuda():
+            logger.error("FATAL: GPU/CUDA not available. This service requires GPU.")
+            raise RuntimeError("GPU is mandatory for this service")
+        gpu_count = paddle.device.cuda.device_count()
+        logger.info(f"GPU detected: {gpu_count} device(s)")
+    except ImportError:
+        logger.error("FATAL: PaddlePaddle not installed")
+        raise RuntimeError("PaddlePaddle is required")
+
     logger.info(f"Max Upload Size: {settings.max_upload_size / (1024*1024):.1f}MB")
     logger.info(f"API Endpoint: http://{settings.app_host}:{settings.app_port}{settings.api_v1_prefix}")
     logger.info(f"Note: PaddleOCR-VL pipeline will be initialized on first request (lazy loading)")
@@ -80,7 +92,7 @@ async def health_check() -> HealthResponse:
     """
     Health check endpoint.
 
-    Returns service status, GPU availability, and pipeline readiness.
+    Returns service status and pipeline readiness.
     """
     service_status = paddleocr_vl_service.get_status()
 
@@ -88,7 +100,6 @@ async def health_check() -> HealthResponse:
         status="healthy",
         service=settings.app_name,
         version=settings.app_version,
-        gpu_enabled=service_status["gpu_enabled"],
         pipeline_ready=service_status["initialized"]
     )
 

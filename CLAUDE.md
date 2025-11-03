@@ -61,7 +61,6 @@ Client (HTTP) → FastAPI (main.py) → OCR Router → PaddleOCR-VL Service → 
   "status": "healthy",
   "service": "PaddleOCR-VL Service",
   "version": "1.0.0",
-  "gpu_enabled": true,
   "pipeline_ready": false,
   "timestamp": "2025-01-15T10:30:00Z"
 }
@@ -70,7 +69,8 @@ Client (HTTP) → FastAPI (main.py) → OCR Router → PaddleOCR-VL Service → 
 **Usage:**
 - Docker health check: `curl -f http://localhost:8000/health`
 - Monitor `pipeline_ready` for model load status
-- Verify `gpu_enabled` matches config
+
+**Note:** GPU with CUDA is mandatory. Service fails at startup if GPU is unavailable.
 
 ### 2. Extract Document
 
@@ -141,12 +141,12 @@ curl -X POST http://localhost:8000/api/v1/ocr/extract-document \
 | `APP_PORT` | 8000 | HTTP port |
 | `APP_HOST` | 0.0.0.0 | Bind address |
 | `DEBUG` | false | Debug mode |
-| `USE_GPU` | true | GPU acceleration |
-| `DEVICE` | gpu | Device type |
 | `MAX_UPLOAD_SIZE` | 52428800 | Max file size (50MB) |
 | `MAX_CONCURRENT_REQUESTS` | 3 | Concurrent limit |
 | `LOG_LEVEL` | INFO | Logging level |
 | `LOG_FORMAT` | json | json/text |
+
+**Note:** GPU with CUDA is mandatory - no configuration option to disable.
 
 ### Logging
 
@@ -266,14 +266,15 @@ cat result.json | jq -r '.results[].parsing_res_list[].block_content'
 - Test connectivity: `curl -I https://paddle-whl.bj.bcebos.com`
 - Check disk space: ~7GB needed (3GB build + 4GB image)
 
-### GPU Not Detected
+### GPU Not Detected (Fatal Error)
 
-**Symptoms:** `gpu_enabled: false` in health check
+**Symptoms:** Service fails to start with "GPU is mandatory" error
 
-**Solutions:**
-- Verify: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`
+**Solution:** GPU with CUDA is required. Service cannot run without it.
+- Verify GPU: `nvidia-smi`
+- Test Docker GPU: `docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi`
 - Check `docker-compose.yml` has GPU config under `deploy.resources.reservations.devices`
-- Restart Docker: `sudo systemctl restart docker`
+- Ensure NVIDIA Container Toolkit is installed
 
 ### CUDA Out of Memory
 
@@ -391,12 +392,11 @@ curl -s http://localhost:8000/health | jq -r '.status'
 ### Key Metrics
 
 1. Health: `/health` returns 200
-2. GPU enabled: `.gpu_enabled == true`
-3. Pipeline ready: `.pipeline_ready == true`
-4. Response time: `processing_time` field
-5. Error rate: 4xx/5xx counts
-6. GPU memory: `nvidia-smi --query-gpu=memory.used`
-7. Container status: `docker ps | grep paddleocr-vl`
+2. Pipeline ready: `.pipeline_ready == true`
+3. Response time: `processing_time` field
+4. Error rate: 4xx/5xx counts
+5. GPU memory: `nvidia-smi --query-gpu=memory.used`
+6. Container status: `docker ps | grep paddleocr-vl`
 
 ## Security Considerations
 

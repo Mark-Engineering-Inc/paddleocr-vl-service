@@ -53,7 +53,7 @@ The service will be available at `http://localhost:8000`
 
 ### Health Check
 
-Check service status and GPU availability.
+Check service status and pipeline readiness.
 
 ```bash
 curl http://localhost:8000/health
@@ -65,11 +65,12 @@ curl http://localhost:8000/health
   "status": "healthy",
   "service": "PaddleOCR-VL Service",
   "version": "1.0.0",
-  "gpu_enabled": true,
   "pipeline_ready": true,
   "timestamp": "2025-01-15T10:30:00Z"
 }
 ```
+
+**Note:** GPU with CUDA is mandatory for this service. The service will fail to start if GPU is not available.
 
 ### Extract Document (OCR)
 

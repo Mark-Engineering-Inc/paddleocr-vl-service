@@ -77,7 +77,6 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service status (healthy/unhealthy)")
     service: str = Field(..., description="Service name")
     version: str = Field(..., description="Service version")
-    gpu_enabled: bool = Field(..., description="Whether GPU is enabled")
     pipeline_ready: bool = Field(..., description="Whether OCR pipeline is initialized")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
 
@@ -87,7 +86,6 @@ class HealthResponse(BaseModel):
                 "status": "healthy",
                 "service": "PaddleOCR-VL Service",
                 "version": "1.0.0",
-                "gpu_enabled": True,
                 "pipeline_ready": True,
                 "timestamp": "2025-01-15T10:30:00Z"
             }

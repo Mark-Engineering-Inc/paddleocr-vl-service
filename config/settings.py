@@ -22,11 +22,6 @@ class Settings(BaseSettings):
     max_upload_size: int = 50 * 1024 * 1024  # 50MB
     allowed_extensions: set = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".pdf"}
 
-    # PaddleOCR-VL settings
-    use_gpu: bool = True
-    device: str = "gpu"  # 'gpu' or 'cpu'
-    enable_mkldnn: bool = True  # Enable CPU acceleration
-
     # Processing settings
     max_concurrent_requests: int = 3  # Limit concurrent processing to avoid OOM
 
