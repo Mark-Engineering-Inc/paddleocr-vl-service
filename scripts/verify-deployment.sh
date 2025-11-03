@@ -52,8 +52,17 @@ KEY_NAME="paddleocr-vl-key"
 TEST_IMAGE=""
 SKIP_API_TEST=false
 TIMEOUT=60
+DEBUG=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Test result tracking
+TEST_CONNECTIVITY="pending"
+TEST_HEALTH="pending"
+TEST_DOCKER="pending"
+TEST_GPU="pending"
+TEST_API="pending"
+TEST_LOGS="pending"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -84,6 +93,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-api-test)
             SKIP_API_TEST=true
+            shift
+            ;;
+        --debug)
+            DEBUG=true
             shift
             ;;
         --timeout)
@@ -158,6 +171,7 @@ test_connectivity() {
 
     if curl -s --connect-timeout 5 "http://${HOST}:${PORT}/health" > /dev/null 2>&1; then
         log "Connectivity OK ✓"
+        TEST_CONNECTIVITY="pass"
         return 0
     else
         log_error "Cannot connect to ${HOST}:${PORT}"
@@ -165,6 +179,7 @@ test_connectivity() {
         log_error "  1. Service is running"
         log_error "  2. Port ${PORT} is accessible"
         log_error "  3. Firewall/security group allows connections"
+        TEST_CONNECTIVITY="fail"
         exit 1
     fi
 }
@@ -188,19 +203,23 @@ check_health() {
 
         if [[ "$STATUS" == "healthy" ]]; then
             log "Health check passed ✓"
+            TEST_HEALTH="pass"
             return 0
         else
             log_error "Service is not healthy"
+            TEST_HEALTH="fail"
             return 1
         fi
     else
         # Fallback without jq
         if echo "$HEALTH_RESPONSE" | grep -q '"status".*"healthy"'; then
             log "Health check passed ✓"
+            TEST_HEALTH="pass"
             return 0
         else
             log_error "Service is not healthy"
             echo "$HEALTH_RESPONSE"
+            TEST_HEALTH="fail"
             return 1
         fi
     fi
@@ -210,6 +229,7 @@ check_health() {
 check_docker_status() {
     if [[ -z "$INSTANCE_ID" ]]; then
         log_info "Skipping Docker check (no instance ID provided)"
+        TEST_DOCKER="skip"
         return 0
     fi
 
@@ -226,29 +246,43 @@ check_docker_status() {
 
     if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
         log_error "Could not get public IP for instance $INSTANCE_ID"
+        TEST_DOCKER="fail"
         return 1
     fi
 
-    # Check Docker containers
-    CONTAINER_STATUS=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no ubuntu@"$PUBLIC_IP" \
-        "cd ~/paddleocr-vl-service && docker-compose ps --format json" 2>/dev/null || echo "[]")
+    # Check Docker containers using simpler command
+    CONTAINER_CHECK=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@"$PUBLIC_IP" \
+        "docker ps --filter name=paddleocr-vl-service --format '{{.Names}}\t{{.Status}}'" 2>&1)
+    SSH_EXIT_CODE=$?
 
-    if command -v jq &> /dev/null && [[ "$CONTAINER_STATUS" != "[]" ]]; then
-        CONTAINER_STATE=$(echo "$CONTAINER_STATUS" | jq -r '.[0].State // "unknown"')
-        CONTAINER_HEALTH=$(echo "$CONTAINER_STATUS" | jq -r '.[0].Health // "unknown"')
+    if [[ $DEBUG == "true" ]]; then
+        log_info "Docker check SSH exit code: $SSH_EXIT_CODE"
+        log_info "Docker check output: $CONTAINER_CHECK"
+    fi
 
-        log "  Container State: $CONTAINER_STATE"
-        log "  Container Health: $CONTAINER_HEALTH"
+    if [[ $SSH_EXIT_CODE -eq 0 && -n "$CONTAINER_CHECK" ]]; then
+        CONTAINER_NAME=$(echo "$CONTAINER_CHECK" | awk '{print $1}')
+        CONTAINER_STATUS=$(echo "$CONTAINER_CHECK" | cut -f2-)
 
-        if [[ "$CONTAINER_STATE" == "running" ]]; then
+        log "  Container: $CONTAINER_NAME"
+        log "  Status: $CONTAINER_STATUS"
+
+        if echo "$CONTAINER_STATUS" | grep -q "Up"; then
             log "Docker container running ✓"
+            TEST_DOCKER="pass"
             return 0
         else
-            log_error "Docker container not running"
+            log_error "Docker container not running properly"
+            TEST_DOCKER="fail"
             return 1
         fi
     else
         log_warning "Could not retrieve Docker status"
+        if [[ $DEBUG == "true" ]]; then
+            log_info "SSH command failed or returned empty result"
+            log_info "Error: $CONTAINER_CHECK"
+        fi
+        TEST_DOCKER="warn"
         return 0
     fi
 }
@@ -257,6 +291,7 @@ check_docker_status() {
 check_gpu_status() {
     if [[ -z "$INSTANCE_ID" ]]; then
         log_info "Skipping GPU check (no instance ID provided)"
+        TEST_GPU="skip"
         return 0
     fi
 
@@ -272,15 +307,27 @@ check_gpu_status() {
         --output text)
 
     # Check GPU inside container
-    GPU_INFO=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no ubuntu@"$PUBLIC_IP" \
-        "docker exec paddleocr-vl-service nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader" 2>/dev/null || echo "")
+    GPU_INFO=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@"$PUBLIC_IP" \
+        "docker exec paddleocr-vl-service nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader" 2>&1)
+    SSH_EXIT_CODE=$?
 
-    if [[ -n "$GPU_INFO" ]]; then
+    if [[ $DEBUG == "true" ]]; then
+        log_info "GPU check SSH exit code: $SSH_EXIT_CODE"
+        log_info "GPU check output: $GPU_INFO"
+    fi
+
+    if [[ $SSH_EXIT_CODE -eq 0 && -n "$GPU_INFO" && ! "$GPU_INFO" =~ "Error" ]]; then
         log "  GPU: $GPU_INFO"
         log "GPU detected ✓"
+        TEST_GPU="pass"
         return 0
     else
         log_warning "Could not retrieve GPU information"
+        if [[ $DEBUG == "true" ]]; then
+            log_info "SSH command failed or returned error"
+            log_info "Output: $GPU_INFO"
+        fi
+        TEST_GPU="warn"
         return 0
     fi
 }
@@ -289,6 +336,7 @@ check_gpu_status() {
 test_ocr_api() {
     if [[ "$SKIP_API_TEST" == "true" ]]; then
         log_info "Skipping API test (--skip-api-test flag set)"
+        TEST_API="skip"
         return 0
     fi
 
@@ -310,6 +358,7 @@ test_ocr_api() {
         else
             log_warning "ImageMagick not found, skipping API test"
             log_warning "Install ImageMagick or provide --test-image to test OCR"
+            TEST_API="skip"
             return 0
         fi
     fi
@@ -343,6 +392,7 @@ test_ocr_api() {
 
             if [[ "$SUCCESS" == "true" ]]; then
                 log "OCR API test passed ✓"
+                TEST_API="pass"
 
                 # Extract text content
                 TEXT_CONTENT=$(echo "$RESPONSE_BODY" | jq -r '.results[].parsing_res_list[].block_content // empty' | head -n 3)
@@ -357,22 +407,26 @@ test_ocr_api() {
             else
                 log_error "OCR processing failed"
                 echo "$RESPONSE_BODY" | jq '.' || echo "$RESPONSE_BODY"
+                TEST_API="fail"
                 return 1
             fi
         else
             # Fallback without jq
             if echo "$RESPONSE_BODY" | grep -q '"success".*true'; then
                 log "OCR API test passed ✓"
+                TEST_API="pass"
                 return 0
             else
                 log_error "OCR processing failed"
                 echo "$RESPONSE_BODY"
+                TEST_API="fail"
                 return 1
             fi
         fi
     else
         log_error "API request failed with status $HTTP_CODE"
         echo "$RESPONSE_BODY"
+        TEST_API="fail"
         return 1
     fi
 }
@@ -381,6 +435,7 @@ test_ocr_api() {
 check_logs() {
     if [[ -z "$INSTANCE_ID" ]]; then
         log_info "Skipping log check (no instance ID provided)"
+        TEST_LOGS="skip"
         return 0
     fi
 
@@ -395,11 +450,17 @@ check_logs() {
         --query 'Reservations[0].Instances[0].PublicIpAddress' \
         --output text)
 
-    # Get last 20 lines of logs
-    LOGS=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no ubuntu@"$PUBLIC_IP" \
-        "cd ~/paddleocr-vl-service && docker-compose logs --tail=20" 2>/dev/null || echo "")
+    # Get last 20 lines of logs using docker logs
+    LOGS=$(ssh -i "$KEY_PATH" -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@"$PUBLIC_IP" \
+        "docker logs paddleocr-vl-service --tail=20 2>&1")
+    SSH_EXIT_CODE=$?
 
-    if [[ -n "$LOGS" ]]; then
+    if [[ $DEBUG == "true" ]]; then
+        log_info "Logs check SSH exit code: $SSH_EXIT_CODE"
+        log_info "First 100 chars of logs: ${LOGS:0:100}"
+    fi
+
+    if [[ $SSH_EXIT_CODE -eq 0 && -n "$LOGS" ]]; then
         # Check for errors
         ERROR_COUNT=$(echo "$LOGS" | grep -ci "error" || true)
         WARNING_COUNT=$(echo "$LOGS" | grep -ci "warning" || true)
@@ -410,12 +471,42 @@ check_logs() {
         if [[ $ERROR_COUNT -gt 0 ]]; then
             log_warning "Errors found in logs"
             echo "$LOGS" | grep -i "error" | tail -n 5
+            TEST_LOGS="warn"
         else
             log "No errors in recent logs ✓"
+            TEST_LOGS="pass"
         fi
     else
         log_warning "Could not retrieve logs"
+        if [[ $DEBUG == "true" ]]; then
+            log_info "SSH command failed or returned empty"
+        fi
+        TEST_LOGS="warn"
     fi
+}
+
+# Helper function to display test result
+display_test_result() {
+    local test_name="$1"
+    local test_status="$2"
+
+    case "$test_status" in
+        pass)
+            echo -e "  ${GREEN}✓${NC} $test_name"
+            ;;
+        fail)
+            echo -e "  ${RED}✗${NC} $test_name"
+            ;;
+        warn)
+            echo -e "  ${YELLOW}⚠${NC} $test_name"
+            ;;
+        skip)
+            echo -e "  ${BLUE}⊘${NC} $test_name (skipped)"
+            ;;
+        *)
+            echo -e "  ${YELLOW}?${NC} $test_name (not run)"
+            ;;
+    esac
 }
 
 # Display summary
@@ -433,17 +524,16 @@ display_summary() {
 
     log ""
     log "Test Results:"
-    log "  ✓ Connectivity"
-    log "  ✓ Health Check"
+    display_test_result "Connectivity" "$TEST_CONNECTIVITY"
+    display_test_result "Health Check" "$TEST_HEALTH"
 
     if [[ -n "$INSTANCE_ID" ]]; then
-        log "  ✓ Docker Status"
-        log "  ✓ GPU Status"
+        display_test_result "Docker Status" "$TEST_DOCKER"
+        display_test_result "GPU Status" "$TEST_GPU"
+        display_test_result "Recent Logs" "$TEST_LOGS"
     fi
 
-    if [[ "$SKIP_API_TEST" == "false" ]]; then
-        log "  ✓ OCR API Test"
-    fi
+    display_test_result "OCR API Test" "$TEST_API"
 
     log ""
     log "========================================="
